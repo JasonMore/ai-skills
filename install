@@ -16,6 +16,10 @@ mkdir -p "${TARGET_DIR}"
 for skill_dir in "${SOURCE_DIR}/"*/; do
 	[[ -d "${skill_dir}" ]] || continue
 	skill_name="$(basename "${skill_dir}")"
+	if [[ -n "${CODESPACES:-}" && "${skill_name}" == "codespace-webstorm" ]]; then
+		echo "[ai-skills] Skipped ${skill_name} in GitHub Codespaces"
+		continue
+	fi
 	skill_target="${TARGET_DIR}/${skill_name}"
 	rm -rf -- "${skill_target}"
 	ln -s "${skill_dir%/}" "${skill_target}"

@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SOURCE_DIR="${REPO_DIR}/skills"
+TARGET_DIR="${HOME}/.copilot/skills"
+
+if [[ ! -d "${SOURCE_DIR}" ]]; then
+	echo "[ai-skills] Missing source directory: ${SOURCE_DIR}" >&2
+	exit 1
+fi
+
+mkdir -p "${TARGET_DIR}"
+
+for skill_dir in "${SOURCE_DIR}/"*/; do
+	[[ -d "${skill_dir}" ]] || continue
+	skill_name="$(basename "${skill_dir}")"
+	skill_target="${TARGET_DIR}/${skill_name}"
+	rm -rf -- "${skill_target}"
+	ln -s "${skill_dir%/}" "${skill_target}"
+	echo "[ai-skills] Linked ${skill_name}"
+done

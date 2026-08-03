@@ -108,7 +108,27 @@ Group related work under descriptive `##` subheadings. For each group:
 - Sessions that only explored without producing artifacts
 - Git alias changes, minor config tweaks (unless part of a larger tooling effort)
 
-### 6. Preserve existing content
+### 6. Write the Calendar section
+
+Each day starts with a `## 🤖 Calendar` section listing that day's meetings, pulled from the user's calendar. Format one bullet per event:
+
+```
+- <start time>: <subject> (<duration> min) [[! <subject>#<YYYY-MM-DD>]]
+```
+
+**Every event MUST end with an Obsidian backlink** `[[! <subject>#<YYYY-MM-DD>]]` so the user can click through to the event note file and add notes there. This is required, not optional. The `! ` prefix and `#<date>` anchor are literal.
+
+Skip all-day blocks (e.g. "Home"), generic placeholder holds (untitled "busy"), and canceled events.
+
+Example:
+```
+## 🤖 Calendar
+
+- 10:30 AM: Weekly Jason <> Katie (30 min) [[! Weekly Jason <> Katie#2026-08-03]]
+- 1:00 PM: Inklings Weekly checkpoint (25 min) [[! Inklings Weekly checkpoint#2026-08-03]]
+```
+
+### 7. Preserve existing content
 
 Never overwrite existing content. Insert new day sections or append to existing sections. Keep any "Still open from last week" section at the bottom.
 
@@ -119,6 +139,7 @@ Never overwrite existing content. Insert new day sections or append to existing 
 - Use active voice.
 - Link every PR mentioned.
 - Note when agent-created PRs were closed or superseded by manual work.
+- Every Calendar event bullet must include its `[[! <subject>#<YYYY-MM-DD>]]` backlink.
 
 ## Example Output
 

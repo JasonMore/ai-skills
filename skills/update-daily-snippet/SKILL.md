@@ -87,9 +87,9 @@ gh pr view <PR_NUMBER> -R <OWNER/REPO> --json title,url,state,headRefName,create
 
 Check what is already written to avoid duplicating content.
 
-### 5. Organize and write summaries
+### 5. Organize summaries
 
-Structure by day using `# Mon`, `# Tue`, etc. as top-level headers.
+Plan the content by day using `# Mon`, `# Tue`, etc. as top-level headers. Do not edit the snippet file yet.
 
 Group related work under descriptive `##` subheadings. For each group:
 - Write a short prose summary of what was accomplished (1-3 sentences)
@@ -108,15 +108,19 @@ Group related work under descriptive `##` subheadings. For each group:
 - Sessions that only explored without producing artifacts
 - Git alias changes, minor config tweaks (unless part of a larger tooling effort)
 
-### 6. Write the Calendar section
+### 6. Resolve Calendar notes and write the snippet
 
-Each day starts with a `## 🤖 Calendar` section listing that day's meetings, pulled from the user's calendar. Format one bullet per event:
+Resolve all Calendar links first. After every event has one target, write the Calendar and planned summaries to the snippet file.
+
+Each day starts with a `## 🤖 Calendar` section listing that day's meetings. Format one bullet per event:
 
 ```
-- <start time>: <subject> (<duration> min) [[! <subject>#<YYYY-MM-DD>]]
+- <start time>: <subject> (<duration> min) [[<resolved-note-path>#<YYYY-MM-DD>]]
 ```
 
-**Every event MUST end with an Obsidian backlink** `[[! <subject>#<YYYY-MM-DD>]]` so the user can click through to the event note file and add notes there. This is required, not optional. The `! ` prefix and `#<date>` anchor are literal.
+Resolve every event to an existing meeting note before writing any snippet content. Follow [calendar note routing](references/calendar-note-routing.md). Use the note's full vault-relative path and the event date anchor.
+
+If no unique note matches, stop and ask the user which note to use. Do not write a partial snippet or create a link from the raw event subject.
 
 Skip all-day blocks (e.g. "Home"), generic placeholder holds (untitled "busy"), and canceled events.
 
@@ -124,8 +128,8 @@ Example:
 ```
 ## 🤖 Calendar
 
-- 10:30 AM: Weekly Jason <> Katie (30 min) [[! Weekly Jason <> Katie#2026-08-03]]
-- 1:00 PM: Inklings Weekly checkpoint (25 min) [[! Inklings Weekly checkpoint#2026-08-03]]
+- 10:30 AM: Weekly Jason <> Katie (30 min) [[one-one/@inkblotty Katie McCormick#2026-08-03]]
+- 11:35 AM: PR future experience cadence (25 min) [[projects/pr-overview/! PR future experience#2026-08-04]]
 ```
 
 ### 7. Preserve existing content
@@ -139,7 +143,7 @@ Never overwrite existing content. Insert new day sections or append to existing 
 - Use active voice.
 - Link every PR mentioned.
 - Note when agent-created PRs were closed or superseded by manual work.
-- Every Calendar event bullet must include its `[[! <subject>#<YYYY-MM-DD>]]` backlink.
+- Every Calendar event bullet must link to one resolved existing note.
 
 ## Example Output
 

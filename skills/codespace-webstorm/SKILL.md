@@ -1,6 +1,6 @@
 ---
 name: codespace-webstorm
-description: Use this skill when the user asks to "connect codespace to WebStorm", "open codespace in WebStorm", "open this codespace in JetBrains Gateway", "use WebStorm with my codespace", "remote dev with WebStorm on Codespaces", or wants to attach JetBrains Gateway/WebStorm remote development to an existing GitHub Codespace via CLI and deep links (no UI automation).
+description: Use this skill when the user asks to connect, open, or reconnect an existing GitHub Codespace in WebStorm or JetBrains Gateway through CLI and deep links (no UI automation).
 ---
 
 # Codespace to WebStorm via JetBrains Gateway
@@ -23,8 +23,7 @@ This skill does not create codespaces. Use the `codespaces` skill for that.
 ## Prerequisites
 
 - `gh` CLI authenticated with `codespace` scope.
-- The target codespace already exists. You can pass either its actual `name`
-  or its VS Code `displayName` (see below); the script resolves it.
+- The target Codespace exists. Pass its name or unique VS Code display name.
 - macOS, for the `open` command.
 - JetBrains Gateway. If missing, this skill asks for confirmation before
   running `brew install --cask jetbrains-gateway`. It never installs without
@@ -32,10 +31,7 @@ This skill does not create codespaces. Use the `codespaces` skill for that.
 
 ## Preflight: Check Auth Scope Before Running
 
-An environment can inject `GH_TOKEN`/`GITHUB_TOKEN` for its own use (for
-example, a Copilot agent sandbox). That injected token can shadow a
-correctly-scoped token in the user's `gh` keyring and lacks the `codespace`
-scope, so every `gh codespace ...` call then fails. Before running for real:
+An injected `GH_TOKEN` can shadow a keyring token with `codespace` scope:
 
 1. Run `gh auth status` and check whether the active token's scopes include
    `codespace`.
@@ -45,13 +41,19 @@ scope, so every `gh codespace ...` call then fails. Before running for real:
 
 ## How to Use This Skill
 
-Run the bundled script. It orchestrates every stage and prints exactly which
-stage failed if something goes wrong.
-
 ```bash
 python3 scripts/open_codespace_webstorm.py --codespace NAME --repo owner/repo
 ```
 
+After VS Code restarts a stopped Codespace, reconnect WebStorm with:
+
+```bash
+python3 scripts/open_codespace_webstorm.py --codespace NAME --repo owner/repo --reconnect
+```
+
+- `--reconnect`: skip opening VS Code. Wait for the Codespace and SSH to
+  become ready, refresh SSH config, revive the backend, and open a fresh
+  Gateway link. Use this after VS Code has restarted and connected.
 - `--codespace NAME` (required): the codespace's actual `name`, or its VS
   Code `displayName` (the label shown in VS Code's window title, e.g.
   `stage-ui-for-you-analytics`, which is NOT always the same as the actual
@@ -79,18 +81,19 @@ python3 scripts/open_codespace_webstorm.py --codespace NAME --repo owner/repo
 - `--start-timeout` (default 180s) / `--poll-interval` (default 3s): how
   long to poll `remote-dev-server.sh status` for a ready `gatewayLink`
   before failing, and how often to check.
+- `--codespace-timeout` (default 180s) / `--ssh-timeout` (default 120s):
+  reconnect wait limits for Codespace state and SSH readiness.
 
-Always run `--dry-run` first and show the user the plan before running for
-real, unless the user explicitly asks to skip that.
+Run `--dry-run` first unless the user asks to skip it.
 
 ## What the Script Does
 
 1. Resolves `--codespace` to the actual codespace `name` via
    `gh codespace list --json name,displayName,repository,state` (see
    above). Every later stage uses this resolved name.
-2. Opens the codespace with `gh codespace code -c NAME`. This mirrors how a
-   user would normally open it in VS Code; VS Code itself owns Codespaces
-   port discovery/forwarding once it connects, not this script.
+2. For a first connect, opens the Codespace with `gh codespace code -c NAME`.
+   For `--reconnect`, waits for the instance VS Code already started. VS Code
+   owns port discovery and forwarding in both cases.
 3. Fetches this one codespace's SSH config block with
    `gh codespace ssh -c NAME --config`, then merges/replaces only that
    codespace's `Host` block into the existing `~/.ssh/codespaces` file
@@ -104,10 +107,8 @@ real, unless the user explicitly asks to skip that.
    "Available" — fetching just the target sidesteps that entirely.) Adds
    one `Include ~/.ssh/codespaces` line to `~/.ssh/config` if it isn't
    already there; all other config content is preserved untouched.
-4. Parses the SSH alias/user out of the fetched block — before the merge
-   above writes anything — so a malformed or ambiguous fetch fails before
-   touching disk. Then verifies the SSH connection actually works before
-   doing any remote work.
+4. Parses the SSH alias/user before writing. A reconnect retries SSH while
+   the restarted Codespace boots. Auth failures stop at once.
 5. Detects the codespace's CPU architecture with `uname -m` (skipped if
    `--arch` was passed).
 6. Reuses an existing, verified WebStorm backend on the codespace (checked
@@ -140,6 +141,14 @@ Each stage fails on its own, with no silent fallback to a different
 codespace, repo, backend, or release. Report the failing stage and its
 message to the user; do not retry with different assumptions.
 
+## Reconnect After a Stop
+
+The old JetBrains Client cannot restart a backend lost when the Codespace
+stopped. Once VS Code shows the Codespace as connected, rerun with
+`--reconnect`. The script refreshes SSH, starts or reuses the remote backend,
+and opens a fresh Gateway link. Close the stale **No connection** client
+window if JetBrains leaves it open.
+
 ## Manual Steps (Not Automated)
 
 The first time Gateway or WebStorm launches, the user must accept the EULA
@@ -150,21 +159,12 @@ user to expect it, and if the run hangs or fails on a brand-new codespace,
 suggest SSHing in once to run the backend interactively and accept the
 prompt, then retrying.
 
-Observed with Gateway 2025.3: opening a valid `jetbrains-gateway://
-connect#...&deploy=false` link prefills Gateway's "Connect to SSH" form
-(host, user, port) but does not click its own **Check Connection and
-Continue** button or launch JetBrains Client automatically. The user must
-click Continue themselves and complete any EULA/license step. This skill
-never automates that click — doing so would require UI automation, which
-this skill does not use. Tell the user to expect this manual step every
-time, not just on first launch.
+Gateway prefills its SSH form but does not click **Check Connection and
+Continue**. The user must click it after every connect or reconnect. This
+skill does not automate that UI step.
 
-Once the user clicks Continue, Gateway takes over entirely: it uploads its
-own worker binary and launches/matches the local JetBrains Client itself.
-This skill never installs, uploads, or manages either — only the WebStorm
-`remote-dev-server.sh` backend (stage 6 above) is its responsibility.
-Confirmed live on Gateway 2025.3: a 2.44 MB worker-binary upload followed
-by WebStorm opening successfully, no code change needed.
+After Continue, Gateway manages its worker and JetBrains Client. This skill
+manages only the remote WebStorm backend.
 
 ## Boundaries
 
@@ -196,4 +196,3 @@ by WebStorm opening successfully, no code change needed.
 - Install, upload, or manage Gateway's own worker binary or the local
   JetBrains Client — Gateway handles both itself once the user confirms.
 - Guess which codespace a duplicate or absent displayName refers to.
-

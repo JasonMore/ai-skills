@@ -17,11 +17,12 @@
    If confirmed, pass `--install-gateway` and re-run. The resolved app path
    is verified to exist (including after a fresh install) and carried
    through the whole pipeline for the final `open` call.
-3. **open-vscode** — Run `gh codespace code -c NAME`. This mirrors how a
-   user would normally open the codespace in VS Code and forces it to
-   start. VS Code itself owns Codespaces port discovery/forwarding once it
-   connects; this script only needs the codespace running, not any specific
-   forwarded port, and does not read VS Code's output.
+3. **open-vscode / wait-codespace-available** — A normal run executes
+   `gh codespace code -c NAME`. With `--reconnect`, VS Code has already
+   restarted the Codespace, so the script skips that command and polls
+   `gh codespace list` until the exact resolved name reports `Available`.
+   It fails if the target disappears, enters `Failed`, `gh` returns an error,
+   or `--codespace-timeout` expires. VS Code owns port discovery and forwarding.
 4. **refresh-ssh-config / refresh-ssh-codespaces** — Run
    `gh codespace ssh -c NAME --config`, fetching only this one codespace's
    `Host` block. `gh codespace ssh --config` with no `-c` regenerates every
@@ -57,9 +58,10 @@
    from stage 4, before that stage's write happens. Fails if zero or more
    than one matching block is found in the fetched output — a malformed or
    ambiguous fetch is caught here, never reaches `~/.ssh/codespaces`.
-7. **verify-ssh-connection** — `ssh -- <alias> true`. Confirms the alias
-   actually connects before any backend work happens over it, so a
-   connectivity failure is never confused with "no backend installed yet".
+7. **verify-ssh-connection / wait-ssh-connection** —
+   `ssh -- <alias> true`. Normal runs fail on the first error. Reconnects
+   retry until SSH accepts the refreshed alias or `--ssh-timeout` expires.
+   Auth failures such as `Permission denied` fail at once instead of waiting.
 8. **detect-arch** — `ssh -- <alias> uname -m`, unless `--arch` was passed
    explicitly. Never assumes `x86_64`; only runs once the SSH alias is
    verified to actually connect.
@@ -143,6 +145,25 @@
     AppleScript, no Computer Use, no UI automation either way. This stage
     only dispatches the link — see "Manual, one-time steps" below for what
     still happens inside Gateway after that.
+
+## Reconnect after a Codespace stop
+
+Starting a stopped Codespace in VS Code restores the instance and port
+forwarding. It does not revive the remote WebStorm backend or the old
+JetBrains Client transport. Run:
+
+```bash
+python3 scripts/open_codespace_webstorm.py \
+  --codespace NAME \
+  --repo owner/repo \
+  --reconnect
+```
+
+The reconnect path waits for Codespace state and SSH, refreshes the target
+SSH block, reuses the installed WebStorm build, then reuses a healthy backend
+or starts a new one. It opens a fresh Gateway link. Click **Check Connection
+and Continue** in Gateway. Close the stale **No connection** client window if
+JetBrains leaves it open.
 
 ## Auth: `--use-keyring-auth`
 

@@ -1615,6 +1615,118 @@ class ResolveCodespaceNameTests(unittest.TestCase):
         self.assertEqual(ctx.exception.stage, "resolve-codespace-name")
 
 
+class ReconnectReadinessTests(unittest.TestCase):
+    @staticmethod
+    def _list_result(state):
+        return m.CommandResult(
+            [],
+            0,
+            json.dumps(
+                [
+                    {
+                        "name": "my-cs-123",
+                        "displayName": "my-cs",
+                        "repository": "octo/widgets",
+                        "state": state,
+                    }
+                ]
+            ),
+            "",
+        )
+
+    def test_waits_for_codespace_to_become_available(self):
+        runner = FakeRunner()
+        states = iter(["Shutdown", "Starting", "Available"])
+        runner.set_handler(lambda cmd: self._list_result(next(states)))
+
+        m.wait_for_codespace_available(
+            "my-cs-123", runner.as_runner(), timeout=10, poll_interval=1
+        )
+
+        self.assertEqual(runner.sleep_calls, [1, 1])
+        self.assertEqual(len(runner.commands), 3)
+
+    def test_codespace_wait_times_out_with_last_state(self):
+        runner = FakeRunner()
+        runner.set_handler(lambda cmd: self._list_result("Starting"))
+
+        with self.assertRaises(m.StageError) as ctx:
+            m.wait_for_codespace_available(
+                "my-cs-123", runner.as_runner(), timeout=2, poll_interval=1
+            )
+
+        self.assertEqual(ctx.exception.stage, "wait-codespace-available")
+        self.assertIn("last state: Starting", str(ctx.exception))
+
+    def test_codespace_query_failure_is_not_retried(self):
+        runner = FakeRunner()
+        runner.script(
+            ["gh", "codespace", "list"],
+            m.CommandResult([], 1, "", "HTTP 401: Bad credentials"),
+        )
+
+        with self.assertRaises(m.StageError) as ctx:
+            m.wait_for_codespace_available("my-cs-123", runner.as_runner())
+
+        self.assertEqual(ctx.exception.stage, "wait-codespace-available")
+        self.assertEqual(runner.sleep_calls, [])
+
+    def test_failed_codespace_state_is_not_retried(self):
+        runner = FakeRunner()
+        runner.set_handler(lambda cmd: self._list_result("Failed"))
+
+        with self.assertRaises(m.StageError) as ctx:
+            m.wait_for_codespace_available("my-cs-123", runner.as_runner())
+
+        self.assertEqual(ctx.exception.stage, "wait-codespace-available")
+        self.assertIn("terminal state: Failed", str(ctx.exception))
+        self.assertEqual(runner.sleep_calls, [])
+
+    def test_waits_for_ssh_after_restart(self):
+        runner = FakeRunner()
+        attempts = iter(
+            [
+                m.CommandResult([], 255, "", "connection refused"),
+                m.CommandResult([], 255, "", "codespace is still starting"),
+                m.CommandResult([], 0, "", ""),
+            ]
+        )
+        runner.set_handler(lambda cmd: next(attempts))
+
+        m.wait_for_ssh_connection(
+            "cs.my-cs-123.main", runner.as_runner(), timeout=10, poll_interval=1
+        )
+
+        self.assertEqual(runner.sleep_calls, [1, 1])
+        self.assertEqual(len(runner.commands), 3)
+
+    def test_ssh_wait_times_out_with_last_error(self):
+        runner = FakeRunner()
+        runner.set_handler(
+            lambda cmd: m.CommandResult([], 255, "", "connection refused")
+        )
+
+        with self.assertRaises(m.StageError) as ctx:
+            m.wait_for_ssh_connection(
+                "cs.my-cs-123.main", runner.as_runner(), timeout=2, poll_interval=1
+            )
+
+        self.assertEqual(ctx.exception.stage, "wait-ssh-connection")
+        self.assertIn("connection refused", str(ctx.exception))
+
+    def test_ssh_auth_failure_is_not_retried(self):
+        runner = FakeRunner()
+        runner.set_handler(
+            lambda cmd: m.CommandResult([], 255, "", "Permission denied (publickey).")
+        )
+
+        with self.assertRaises(m.StageError) as ctx:
+            m.wait_for_ssh_connection("cs.my-cs-123.main", runner.as_runner())
+
+        self.assertEqual(ctx.exception.stage, "wait-ssh-connection")
+        self.assertEqual(runner.sleep_calls, [])
+
+
 class UseKeyringAuthTests(unittest.TestCase):
     def test_default_run_command_passes_env_none(self):
         captured = {}
@@ -1830,6 +1942,25 @@ class DryRunTests(unittest.TestCase):
             any(line.startswith("ssh --") and line.endswith(" true") for line in plan)
         )
         self.assertTrue(any("/workspaces/widgets" in line for line in plan))
+        self.assertTrue(any("jetbrains-gateway://connect" in line for line in plan))
+
+    def test_reconnect_plan_skips_vscode_and_shows_readiness_waits(self):
+        plan = m.build_plan(
+            self._parse(
+                [
+                    "--reconnect",
+                    "--codespace-timeout",
+                    "90",
+                    "--ssh-timeout",
+                    "45",
+                ]
+            )
+        )
+
+        self.assertFalse(any("gh codespace code" in line for line in plan))
+        self.assertTrue(any("90s" in line and "Available" in line for line in plan))
+        self.assertTrue(any("45s" in line and "retry" in line for line in plan))
+        self.assertTrue(any("gh codespace ssh" in line for line in plan))
         self.assertTrue(any("jetbrains-gateway://connect" in line for line in plan))
 
     def test_build_plan_never_prints_raw_codespace_value_as_if_resolved(self):
@@ -2064,6 +2195,97 @@ class FullPipelineTests(unittest.TestCase):
             self.assertTrue(
                 any(c[:3] == ["gh", "codespace", "ssh"] and "-c" in c for c in runner.commands)
             )
+
+    def test_reconnect_waits_skips_vscode_and_restarts_backend(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ssh_config_path = Path(tmp) / "config"
+            ssh_codespaces_path = Path(tmp) / "codespaces"
+            gateway_app = Path(tmp) / "Gateway.app"
+            gateway_app.mkdir()
+            args = m.build_arg_parser().parse_args(
+                [
+                    "--codespace",
+                    "my-cs-123",
+                    "--repo",
+                    "octo/widgets",
+                    "--reconnect",
+                    "--codespace-timeout",
+                    "10",
+                    "--ssh-timeout",
+                    "10",
+                    "--poll-interval",
+                    "1",
+                    "--ssh-config-path",
+                    str(ssh_config_path),
+                    "--ssh-codespaces-path",
+                    str(ssh_codespaces_path),
+                    "--gateway-app-path",
+                    str(gateway_app),
+                ]
+            )
+            runner = FakeRunner()
+            gateway_link = (
+                "jetbrains-gateway://connect#projectPath=%2Fworkspaces%2Fwidgets"
+                "&host=cs.my-cs-123.main&port=22&user=vscode&type=ssh&deploy=false"
+            )
+            state_calls = {"n": 0}
+            ssh_calls = {"n": 0}
+            status_calls = {"n": 0}
+
+            def run_command(cmd, *, input_text=None, timeout=None):
+                if cmd[:3] == ["gh", "codespace", "list"]:
+                    state_calls["n"] += 1
+                    state = "Starting" if state_calls["n"] == 2 else "Available"
+                    return m.CommandResult(
+                        cmd,
+                        0,
+                        json.dumps(
+                            [
+                                {
+                                    "name": "my-cs-123",
+                                    "displayName": "my-cs-123",
+                                    "repository": "octo/widgets",
+                                    "state": state,
+                                }
+                            ]
+                        ),
+                        "",
+                    )
+                if cmd[:3] == ["gh", "codespace", "code"]:
+                    raise AssertionError("--reconnect must not open VS Code")
+                if cmd[:3] == ["gh", "codespace", "ssh"]:
+                    return m.CommandResult(cmd, 0, SAMPLE_CONFIG_ONE_HOST, "")
+                if cmd[:3] == ["ssh", "--", "cs.my-cs-123.main"] and cmd[3] == "true":
+                    ssh_calls["n"] += 1
+                    if ssh_calls["n"] == 1:
+                        return m.CommandResult(cmd, 255, "", "connection refused")
+                    return m.CommandResult(cmd, 0, "", "")
+                if cmd[:3] == ["ssh", "--", "cs.my-cs-123.main"] and cmd[3] == "uname":
+                    return m.CommandResult(cmd, 0, "x86_64\n", "")
+                if cmd[0] == "ssh" and "product-info.json" in cmd[-1]:
+                    return m.CommandResult(cmd, 0, SAMPLE_BACKEND_PATH + "\n", "")
+                if cmd[0] == "ssh" and "status" in cmd[-1]:
+                    status_calls["n"] += 1
+                    return self._status_result(
+                        ready=status_calls["n"] > 1,
+                        gateway_link=gateway_link,
+                        project_path="/workspaces/widgets",
+                    )
+                if cmd[0] == "ssh" and "nohup" in cmd[-1]:
+                    return m.CommandResult(cmd, 0, "", "")
+                if cmd[0] == "open":
+                    return m.CommandResult(cmd, 0, "", "")
+                raise AssertionError(f"unexpected command: {cmd}")
+
+            runner.set_handler(run_command)
+            link = m.run(args, runner.as_runner())
+
+            self.assertEqual(link, gateway_link)
+            self.assertEqual(state_calls["n"], 3)
+            self.assertEqual(ssh_calls["n"], 2)
+            self.assertTrue(any(c[0] == "ssh" and "nohup" in c[-1] for c in runner.commands))
+            self.assertFalse(any(c[:3] == ["gh", "codespace", "code"] for c in runner.commands))
+            self.assertEqual(runner.commands[-1][0], "open")
 
     def test_run_with_explicit_arch_skips_remote_detection(self):
         with tempfile.TemporaryDirectory() as tmp:

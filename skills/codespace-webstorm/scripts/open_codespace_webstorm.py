@@ -72,6 +72,8 @@ DEFAULT_DIST_DIR = "~/.cache/JetBrains/RemoteDev/dist"
 DEFAULT_SSH_LINK_PORT = 22
 DEFAULT_START_TIMEOUT_SECONDS = 180.0
 DEFAULT_POLL_INTERVAL_SECONDS = 3.0
+DEFAULT_CODESPACE_TIMEOUT_SECONDS = 180.0
+DEFAULT_SSH_TIMEOUT_SECONDS = 120.0
 # remote-dev-server.sh run is a long-lived server process that never exits
 # on its own, so its own stdout is never waited on. Its per-project log,
 # once started detached, lives here instead.
@@ -92,6 +94,7 @@ AUTH_ENV_VARS_TO_STRIP = ("GH_TOKEN", "GITHUB_TOKEN")
 # placeholder instead of the raw --codespace value, so the plan never
 # prints a possibly-wrong displayName as if it were already resolved.
 RESOLVED_CODESPACE_PLACEHOLDER = "<resolved-codespace-name>"
+TERMINAL_CODESPACE_STATES = frozenset({"Failed"})
 
 
 class StageError(Exception):
@@ -325,6 +328,63 @@ def resolve_codespace_name(requested: str, runner: Runner) -> str:
         f"display name '{requested}' matches multiple codespaces "
         f"({', '.join(display_matches)}); pass the exact --codespace <name> instead",
     )
+
+
+def query_codespace_state(codespace_name: str, runner: Runner) -> str:
+    """Return the current state for one exact codespace name."""
+    result = runner.run_command(build_codespace_list_command(), timeout=60)
+    if result.returncode != 0:
+        raise StageError(
+            "wait-codespace-available",
+            result.stderr.strip() or "gh codespace list failed while checking restart state",
+        )
+    try:
+        codespaces = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise StageError(
+            "wait-codespace-available",
+            f"could not parse 'gh codespace list' JSON while checking restart state: {exc}",
+        )
+    for codespace in codespaces:
+        if codespace.get("name") == codespace_name:
+            state = codespace.get("state")
+            if not isinstance(state, str) or not state:
+                raise StageError(
+                    "wait-codespace-available",
+                    f"codespace '{codespace_name}' has no valid state",
+                )
+            return state
+    raise StageError(
+        "wait-codespace-available",
+        f"codespace '{codespace_name}' disappeared while waiting for restart",
+    )
+
+
+def wait_for_codespace_available(
+    codespace_name: str,
+    runner: Runner,
+    *,
+    timeout: float = DEFAULT_CODESPACE_TIMEOUT_SECONDS,
+    poll_interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
+) -> None:
+    """Wait for a user-restarted codespace to report ``Available``."""
+    deadline = runner.monotonic() + timeout
+    while True:
+        state = query_codespace_state(codespace_name, runner)
+        if state == "Available":
+            return
+        if state in TERMINAL_CODESPACE_STATES:
+            raise StageError(
+                "wait-codespace-available",
+                f"codespace '{codespace_name}' entered terminal state: {state}",
+            )
+        if runner.monotonic() >= deadline:
+            raise StageError(
+                "wait-codespace-available",
+                f"timed out after {timeout:.0f}s waiting for codespace "
+                f"'{codespace_name}' to become Available; last state: {state}",
+            )
+        runner.sleep(poll_interval)
 
 
 # ---------------------------------------------------------------------------
@@ -722,6 +782,37 @@ def verify_ssh_connection(ssh_alias: str, runner: Runner) -> None:
             "verify-ssh-connection",
             result.stderr.strip() or f"could not connect to '{ssh_alias}' over ssh",
         )
+
+
+_FATAL_SSH_ERROR_RE = re.compile(
+    r"(permission denied|authentication failed|no supported authentication methods)",
+    re.IGNORECASE,
+)
+
+
+def wait_for_ssh_connection(
+    ssh_alias: str,
+    runner: Runner,
+    *,
+    timeout: float = DEFAULT_SSH_TIMEOUT_SECONDS,
+    poll_interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
+) -> None:
+    """Retry SSH while a restarted codespace finishes booting."""
+    deadline = runner.monotonic() + timeout
+    while True:
+        result = runner.run_command(build_ssh_verify_command(ssh_alias), timeout=30)
+        if result.returncode == 0:
+            return
+        last_error = result.stderr.strip() or result.stdout.strip() or "ssh failed"
+        if _FATAL_SSH_ERROR_RE.search(last_error):
+            raise StageError("wait-ssh-connection", last_error)
+        if runner.monotonic() >= deadline:
+            raise StageError(
+                "wait-ssh-connection",
+                f"timed out after {timeout:.0f}s waiting for SSH to '{ssh_alias}'; "
+                f"last error: {last_error}",
+            )
+        runner.sleep(poll_interval)
 
 
 # ---------------------------------------------------------------------------
@@ -1287,10 +1378,17 @@ def build_plan(args: argparse.Namespace) -> List[str]:
                 "[BLOCKED] JetBrains Gateway not found; rerun with --install-gateway "
                 "after user confirms"
             )
-    plan.append(
-        " ".join(build_open_vscode_command(RESOLVED_CODESPACE_PLACEHOLDER))
-        + " (actual name resolved live above, not known during --dry-run)"
-    )
+    if args.reconnect:
+        plan.append(
+            f"wait up to {args.codespace_timeout:.0f}s for "
+            f"{RESOLVED_CODESPACE_PLACEHOLDER} to become Available "
+            "(VS Code already started it and owns port forwarding)"
+        )
+    else:
+        plan.append(
+            " ".join(build_open_vscode_command(RESOLVED_CODESPACE_PLACEHOLDER))
+            + " (actual name resolved live above, not known during --dry-run)"
+        )
     plan.append(
         " ".join(build_ssh_config_command(RESOLVED_CODESPACE_PLACEHOLDER))
         + " (selected codespace only; merged into ~/.ssh/codespaces, other "
@@ -1298,7 +1396,13 @@ def build_plan(args: argparse.Namespace) -> List[str]:
     )
     plan.append(f"merge + write {args.ssh_codespaces_path} (atomic, 0600)")
     plan.append(f"ensure 'Include ~/.ssh/codespaces' in {args.ssh_config_path}")
-    plan.append(" ".join(build_ssh_verify_command(ssh_alias_placeholder)))
+    ssh_plan = " ".join(build_ssh_verify_command(ssh_alias_placeholder))
+    if args.reconnect:
+        ssh_plan += (
+            f" (retry every {args.poll_interval:.0f}s for up to "
+            f"{args.ssh_timeout:.0f}s while restarted Codespace finishes booting)"
+        )
+    plan.append(ssh_plan)
     if args.arch:
         plan.append(f"using --arch {args.arch} (no remote detection needed)")
     else:
@@ -1348,7 +1452,15 @@ def run(args: argparse.Namespace, runner: Runner) -> str:
     gateway_app_path = ensure_gateway(
         runner, install_gateway=args.install_gateway, candidates=gateway_candidates
     )
-    open_codespace_in_vscode(codespace_name, runner)
+    if args.reconnect:
+        wait_for_codespace_available(
+            codespace_name,
+            runner,
+            timeout=args.codespace_timeout,
+            poll_interval=args.poll_interval,
+        )
+    else:
+        open_codespace_in_vscode(codespace_name, runner)
 
     config_text = fetch_ssh_config_text(codespace_name, runner)
     # Validate/parse the selected output BEFORE any write happens: a
@@ -1358,7 +1470,15 @@ def run(args: argparse.Namespace, runner: Runner) -> str:
     write_ssh_codespaces_file(args.ssh_codespaces_path, config_text, codespace_name)
     ensure_ssh_include(args.ssh_config_path)
 
-    verify_ssh_connection(ssh_target.alias, runner)
+    if args.reconnect:
+        wait_for_ssh_connection(
+            ssh_target.alias,
+            runner,
+            timeout=args.ssh_timeout,
+            poll_interval=args.poll_interval,
+        )
+    else:
+        verify_ssh_connection(ssh_target.alias, runner)
     arch = args.arch or detect_remote_arch(ssh_target.alias, runner)
 
     backend_path = ensure_backend(ssh_target.alias, args.dist_dir, arch, runner)
@@ -1432,6 +1552,27 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "(gh, ssh, curl, and ssh's ProxyCommand), forcing 'gh' to fall back "
         "to its keyring-stored credentials. Use when an injected GH_TOKEN "
         "lacks the 'codespace' scope. Never touches this process's own env.",
+    )
+    parser.add_argument(
+        "--reconnect",
+        action="store_true",
+        help="Reconnect after VS Code has restarted the Codespace: skip opening "
+        "VS Code, wait for Codespace and SSH readiness, then refresh SSH and "
+        "open a fresh Gateway link",
+    )
+    parser.add_argument(
+        "--codespace-timeout",
+        type=float,
+        default=DEFAULT_CODESPACE_TIMEOUT_SECONDS,
+        help="Seconds --reconnect waits for the Codespace to become Available "
+        f"(default: {DEFAULT_CODESPACE_TIMEOUT_SECONDS:.0f})",
+    )
+    parser.add_argument(
+        "--ssh-timeout",
+        type=float,
+        default=DEFAULT_SSH_TIMEOUT_SECONDS,
+        help="Seconds --reconnect waits for SSH after the Codespace becomes "
+        f"Available (default: {DEFAULT_SSH_TIMEOUT_SECONDS:.0f})",
     )
     parser.add_argument(
         "--start-timeout",

@@ -1,178 +1,99 @@
 ---
 name: update-daily-snippet
 description: >
-  This skill should be used when the user asks to "update my snippets",
-  "add to my weekly summary", "update daily snippet", "what did I work on",
-  "summarize my sessions", "add today's work to snippets", or needs to
-  gather work from Copilot sessions (local and remote) and add summaries
-  to the weekly snippets file.
-author: JasonMore
+  Runs calendar capture, daily todo refresh, then work logging. Use when the
+  user asks to "update my snippets", "add to my weekly summary", "update daily
+  snippet", "what did I work on", "summarize my sessions", "add today's work
+  to snippets", or wants one daily workflow for calendar notes, todos, and
+  verified work activity.
 ---
 
 # Update Daily Snippet
 
-Gather work from local Copilot CLI sessions and remote coding agent tasks, then append concise summaries to the weekly snippets file.
+Run calendar capture, refresh daily todos, then run work logging.
 
-## When to Use
+## Inputs
 
-- End of day or start of next day, to capture what was done
-- User asks to update snippets, summarize sessions, or log daily work
-- User wants to see what they worked on across all Copilot sessions
-
-## Snippets File Location
-
-Weekly snippet files live in `Github/snippets/` with the naming pattern:
-
-```
-YYYY MM mon DD - mon DD.md
-```
-
-Example: `2026 03 mar 16 - mar 20.md`
-
-If the file for the current week does not exist, create it.
+- Date or date range. Default to today in the user's local time.
+- User focus, if supplied. Pass it to `work-log` as hints.
 
 ## Process
 
-### 1. Identify the date range
+1. Invoke `calendar-notes` for the date range.
+2. Wait for its result. Record changed files, commit SHA, no-op, or error.
+3. If calendar routing or persistence failed, stop and return its error.
+4. Refresh the daily todo section in the current handwritten weekly snippet.
+5. Invoke `work-log` for the same date range and focus.
+6. Wait for its result.
+7. Return calendar, todo, and work-log results in order.
 
-Determine which day(s) to summarize. Default: today. The user may ask for yesterday, a range, or the whole week.
+Run `work-log` after calendar success or no-op. Calendar must finish first.
+Report partial success when work-log fails after calendar changed content.
 
-### 2. Gather local CLI sessions
+## Daily todo refresh
 
-Query the session store for sessions created in the target date range:
+Use this phase for open follow-ups only. Do not summarize ships here.
 
-```sql
-SELECT s.id, s.cwd, s.repository, s.branch, s.summary, s.created_at, s.updated_at
-FROM sessions s
-WHERE s.created_at >= '<start_date>T00:00:00'
-  AND s.created_at < '<end_date_exclusive>T00:00:00'
-ORDER BY s.created_at ASC
-```
+Read:
 
-Then fetch first few turns for context on what was done:
+1. Current handwritten file: `snippets/<current-week>.md`
+2. Prior handwritten file: `snippets/<prior-week>.md`
+3. Meeting notes linked from calendar bullets in the date range
 
-```sql
-SELECT session_id, turn_index, substr(user_message, 1, 500) as user_msg,
-       substr(assistant_response, 1, 500) as asst_resp
-FROM turns
-WHERE session_id IN ('<id1>', '<id2>', ...)
-  AND turn_index <= 3
-ORDER BY session_id, turn_index
-```
+For linked one-on-one or recurring meeting notes, read only the matching
+`#YYYY-MM-DD` section when it exists. Skip the note if the date section is
+missing. Do not pull old todos from other sections.
 
-Also check checkpoints for longer sessions:
+Collect:
 
-```sql
-SELECT session_id, checkpoint_number, title, overview, work_done
-FROM checkpoints
-WHERE session_id IN ('<id1>', '<id2>', ...)
-ORDER BY session_id, checkpoint_number
-```
+- Open checkbox todos from the current day or date range.
+- Open action items and follow-up items from linked meeting note sections.
+- Still-open, non-trivial todos from the prior handwritten file's `# todo`
+  section when the current file does not mark them complete.
 
-### 3. Gather remote agent tasks
+For each copied todo:
 
-```bash
-gh agent-task list -L 50
-```
+- Copy the source text exactly. Keep its case, spelling, punctuation, links,
+  owner text, indentation, and checkbox syntax.
+- Keep todos in their source order.
+- Keep source group labels that contain copied todos.
+- Do not rewrite, shorten, expand, fix, or add owner text.
+- Do not regroup todos by topic or create new group labels.
 
-This returns tab-delimited rows: title, PR number, repo, status, timestamp. Filter to the target date range. Cross-reference PR numbers with local session context to avoid duplication.
+Skip:
 
-For any interesting agent task PRs, get details:
+- Completed checkboxes.
+- Trivial placeholders, blank tasks, and stale historical items.
+- Items that current notes show as done, replaced, or no longer useful.
 
-```bash
-gh pr view <PR_NUMBER> -R <OWNER/REPO> --json title,url,state,headRefName,createdAt
-```
+Deduplicate by normalized task text, target URL, and owner. When duplicates
+exist, copy the newest source item exactly.
 
-### 4. Read the current snippets file
-
-Check what is already written to avoid duplicating content.
-
-### 5. Organize summaries
-
-Plan the content by day using `# Mon`, `# Tue`, etc. as top-level headers. Do not edit the snippet file yet.
-
-Group related work under descriptive `##` subheadings. For each group:
-- Write a short prose summary of what was accomplished (1-3 sentences)
-- List PRs with links in the format `[repo#number](url) - description`
-- Include agent task PRs that were opened, noting if they were closed/superseded
-
-**What to include:**
-- Feature work, bug fixes, and PRs (both manual and agent-created)
-- Research and investigation sessions with key findings
-- Tooling and developer experience improvements
-- Meeting notes processing and notable decisions from 1:1s
-- Documentation and onboarding work
-
-**What to skip:**
-- Very brief sessions with no meaningful output (typos, quick lookups)
-- Sessions that only explored without producing artifacts
-- Git alias changes, minor config tweaks (unless part of a larger tooling effort)
-
-### 6. Resolve Calendar notes and write the snippet
-
-Resolve all Calendar links first. After every event has one target, write the Calendar and planned summaries to the snippet file.
-
-Each day starts with a `## 🤖 Calendar` section listing that day's meetings. Format one bullet per event:
-
-```
-- <start time>: <subject> (<duration> min) [[<resolved-note-path>#<YYYY-MM-DD>]]
-```
-
-Resolve every event to an existing meeting note before writing any snippet content. Follow [calendar note routing](references/calendar-note-routing.md). Use the note's full vault-relative path and the event date anchor.
-
-If no unique note matches, stop and ask the user which note to use. Do not write a partial snippet or create a link from the raw event subject.
-
-Skip all-day blocks (e.g. "Home"), generic placeholder holds (untitled "busy"), and canceled events.
-
-Example:
-```
-## 🤖 Calendar
-
-- 10:30 AM: Weekly Jason <> Katie (30 min) [[one-one/@inkblotty Katie McCormick#2026-08-03]]
-- 11:35 AM: PR future experience cadence (25 min) [[projects/pr-overview/! PR future experience#2026-08-04]]
-```
-
-### 7. Preserve existing content
-
-Never overwrite existing content. Insert new day sections or append to existing sections. Keep any "Still open from last week" section at the bottom.
-
-## Writing Rules
-
-- No em dashes or en dashes. Use colons, periods, or hyphens.
-- Keep summaries concise and scannable.
-- Use active voice.
-- Link every PR mentioned.
-- Note when agent-created PRs were closed or superseded by manual work.
-- Every Calendar event bullet must link to one resolved existing note.
-
-## Example Output
+Write one section under each matching day:
 
 ```markdown
-# Tue
-
-## Widget refactor
-
-Extracted shared widget logic into a reusable hook. Replaced three duplicate implementations across the overview, detail, and settings pages.
-
-- [github-ui#12345](https://github.com/github/github-ui/pull/12345) - new `useWidget` hook with tests
-- [github-ui#12350](https://github.com/github/github-ui/pull/12350) (agent, closed) - initial attempt on `copilot/widget-refactor` branch, work folded into #12345
-- Coding agent also opened [github-ui#12348](https://github.com/github/github-ui/pull/12348) for lint fixes found during refactor
-
-## 1:1 with teammate
-
-- Discussed rollout plan for feature X, agreed on phased approach
-- Action item: write RFC by Friday
+## 🤖 Todos
+- [ ] Task (Owner)
 ```
+
+Keep existing todo bullets. Add only missing bullets. Do not sort or rewrite
+user text. Preserve the copied order and group labels. If a day heading is
+missing, append it without moving other content.
+
+## Persistence
+
+`calendar-notes` and `work-log` each invoke `persist-work-notes` with their
+exact changed files. The todo phase invokes `persist-work-notes` once with the
+current handwritten weekly snippet when it changed.
+
+Skip todo persistence on a no-op.
 
 ## Boundaries
 
-**Will:**
-- Query both local session store and remote agent tasks
-- Cross-reference to avoid duplication
-- Organize by day and theme
-- Preserve existing snippets content
+- Keep calendar events in handwritten weekly snippets.
+- Keep open follow-ups in handwritten weekly snippets.
+- Keep generated activity in `snippets/work-log/`.
+- Never copy work-log prose into a handwritten day section.
+- Never hide a calendar, todo, or work-log error.
 
-**Will Not:**
-- Delete or rewrite existing content without being asked
-- Include sensitive meeting details beyond action items and decisions
-- Fabricate work that does not appear in session data
+See [evaluations](references/evaluations.md).

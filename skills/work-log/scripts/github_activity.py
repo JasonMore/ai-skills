@@ -394,6 +394,7 @@ def collect_user_events(
     candidates: List[JsonObject] = []
     scanned = 0
     pages_scanned = 0
+    complete = False
     encoded_user = quote(user, safe="")
     encoded_owner = quote(owner, safe="")
     for page in range(1, max_pages + 1):
@@ -408,6 +409,7 @@ def collect_user_events(
         if not isinstance(payload, list):
             raise RuntimeError("GitHub user events response was not a JSON array")
         if not payload:
+            complete = True
             break
         scanned += len(payload)
         timestamps = []
@@ -418,13 +420,23 @@ def collect_user_events(
                     candidates.extend(normalize_event(event, user, owner))
         oldest = min((value for value in timestamps if value is not None), default=None)
         if oldest is not None and oldest < start:
+            complete = True
             break
-    return candidates, {
+        if len(payload) < per_page:
+            complete = True
+            break
+    status = {
         "ok": True,
+        "complete": complete,
         "pages_scanned": pages_scanned,
         "events_scanned": scanned,
         "result_limit": max_pages * per_page,
     }
+    if not complete:
+        status["warning"] = (
+            "Result limit reached before the event feed crossed the requested start time."
+        )
+    return candidates, status
 
 
 DISCUSSION_QUERY = """
@@ -457,6 +469,7 @@ def collect_discussions(
     candidates: List[JsonObject] = []
     cursor: Optional[str] = None
     pages_scanned = 0
+    complete = False
     for _ in range(max_pages):
         arguments = [
             "graphql",
@@ -479,16 +492,21 @@ def collect_discussions(
                     candidates.append(normalized)
         page_info = search.get("pageInfo") or {}
         if not page_info.get("hasNextPage"):
+            complete = True
             break
         cursor = page_info.get("endCursor")
         if not cursor:
             raise RuntimeError("GitHub discussion search returned an empty next cursor")
-    return candidates, {
+    status = {
         "ok": True,
+        "complete": complete,
         "pages_scanned": pages_scanned,
         "result_limit": max_pages * 100,
         "note": "Discussion replies are collected from user events when GitHub exposes them.",
     }
+    if not complete:
+        status["warning"] = "Result limit reached while more discussion search pages remained."
+    return candidates, status
 
 
 def status_for(statuses: JsonObject, authenticated: bool) -> str:
@@ -500,7 +518,10 @@ def status_for(statuses: JsonObject, authenticated: bool) -> str:
     failed_sources = [
         status for name, status in statuses.items() if name != "authenticated_user" and not status["ok"]
     ]
-    if failed_sources and successful_sources:
+    incomplete_sources = [
+        status for status in successful_sources if status.get("complete") is False
+    ]
+    if (failed_sources and successful_sources) or incomplete_sources:
         return "partial"
     if failed_sources:
         return "failed"

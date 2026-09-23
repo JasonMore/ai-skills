@@ -272,6 +272,7 @@ class CollectionTests(unittest.TestCase):
             ["pull-requests", "reviews", "issues", "commits", "discussions"],
         )
         self.assertEqual(result["errors"], [{"source": "discussions", "error": "GraphQL unavailable"}])
+        self.assertTrue(result["source_status"]["user_events"]["complete"])
         assert_candidate_schema(self, result["candidates"][0])
         self.assertIn(
             [
@@ -281,6 +282,68 @@ class CollectionTests(unittest.TestCase):
             ],
             commands,
         )
+
+    def test_user_events_report_incomplete_when_full_page_reaches_limit(self) -> None:
+        full_page = [
+            event("PushEvent", {"commits": []}, str(index))
+            for index in range(1, 3)
+        ]
+
+        def fake_run(command: list[str]) -> tuple[int, str, str]:
+            return 0, json.dumps(full_page), ""
+
+        _, status = github_activity.collect_user_events(
+            "octocat",
+            dt.datetime(2026, 9, 22, tzinfo=dt.timezone.utc),
+            dt.datetime(2026, 9, 24, tzinfo=dt.timezone.utc),
+            "github",
+            max_pages=1,
+            per_page=2,
+            run_command=fake_run,
+        )
+        self.assertFalse(status["complete"])
+        self.assertIn("Result limit reached", status["warning"])
+        self.assertEqual(github_activity.status_for({"user_events": status}, True), "partial")
+
+    def test_user_events_report_complete_for_a_short_final_page(self) -> None:
+        def fake_run(command: list[str]) -> tuple[int, str, str]:
+            return 0, json.dumps([event("PushEvent", {"commits": []})]), ""
+
+        _, status = github_activity.collect_user_events(
+            "octocat",
+            dt.datetime(2026, 9, 22, tzinfo=dt.timezone.utc),
+            dt.datetime(2026, 9, 24, tzinfo=dt.timezone.utc),
+            "github",
+            max_pages=1,
+            per_page=2,
+            run_command=fake_run,
+        )
+        self.assertTrue(status["complete"])
+        self.assertNotIn("warning", status)
+
+    def test_discussions_report_incomplete_when_more_pages_remain_at_limit(self) -> None:
+        payload = {
+            "data": {
+                "search": {
+                    "nodes": [],
+                    "pageInfo": {"hasNextPage": True, "endCursor": "cursor-2"},
+                }
+            }
+        }
+
+        def fake_run(command: list[str]) -> tuple[int, str, str]:
+            return 0, json.dumps(payload), ""
+
+        _, status = github_activity.collect_discussions(
+            "octocat",
+            dt.datetime(2026, 9, 22, tzinfo=dt.timezone.utc),
+            dt.datetime(2026, 9, 24, tzinfo=dt.timezone.utc),
+            "github",
+            max_pages=1,
+            run_command=fake_run,
+        )
+        self.assertFalse(status["complete"])
+        self.assertIn("Result limit reached", status["warning"])
 
     def test_output_write_is_atomic_for_normal_use(self) -> None:
         payload = {"collector": "github", "status": "ok"}

@@ -316,10 +316,17 @@ class CollectionTests(unittest.TestCase):
             ["gh", "api", "/user"], capture_output=True, text=True, check=False
         )
 
-    def test_date_end_is_inclusive_for_a_date_argument(self) -> None:
+    def test_date_only_boundaries_use_supplied_local_timezone(self) -> None:
+        utc_minus_five = dt.timezone(dt.timedelta(hours=-5))
         self.assertEqual(
-            github_activity.parse_range_boundary("2026-09-22", is_end=True),
-            dt.datetime(2026, 9, 23, tzinfo=dt.timezone.utc),
+            github_activity.parse_range_boundary("2026-09-23", timezone=utc_minus_five),
+            dt.datetime(2026, 9, 23, 5, tzinfo=dt.timezone.utc),
+        )
+        self.assertEqual(
+            github_activity.parse_range_boundary(
+                "2026-09-23", is_end=True, timezone=utc_minus_five
+            ),
+            dt.datetime(2026, 9, 24, 5, tzinfo=dt.timezone.utc),
         )
 
 

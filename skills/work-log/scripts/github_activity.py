@@ -13,6 +13,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import urlsplit, urlunsplit
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 DEFAULT_OWNER = "github"
 DEFAULT_MAX_PAGES = 10
@@ -22,12 +23,28 @@ JsonObject = Dict[str, Any]
 RunCommand = Callable[[Sequence[str]], Tuple[int, str, str]]
 
 
-def parse_range_boundary(value: str, is_end: bool = False) -> dt.datetime:
-    """Parse a date or ISO timestamp as an aware UTC boundary."""
+def local_timezone() -> dt.tzinfo:
+    """Return the host's current local timezone."""
+    return dt.datetime.now().astimezone().tzinfo or dt.timezone.utc
+
+
+def resolve_timezone(name: Optional[str]) -> dt.tzinfo:
+    """Resolve an IANA timezone, or use the host local timezone by default."""
+    return ZoneInfo(name) if name else local_timezone()
+
+
+def parse_range_boundary(
+    value: str, is_end: bool = False, timezone: Optional[dt.tzinfo] = None
+) -> dt.datetime:
+    """Parse local dates and aware timestamps as UTC range boundaries."""
     if len(value) == 10:
         parsed_date = dt.date.fromisoformat(value)
-        boundary = dt.datetime.combine(parsed_date, dt.time.min, tzinfo=dt.timezone.utc)
-        return boundary + dt.timedelta(days=1) if is_end else boundary
+        boundary = dt.datetime.combine(
+            parsed_date, dt.time.min, tzinfo=timezone or local_timezone()
+        )
+        if is_end:
+            boundary += dt.timedelta(days=1)
+        return boundary.astimezone(dt.timezone.utc)
     parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
     if parsed.tzinfo is None:
         raise ValueError("timestamps must include a timezone")
@@ -571,19 +588,24 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-pages", type=int, default=DEFAULT_MAX_PAGES)
     parser.add_argument("--per-page", type=int, default=DEFAULT_PER_PAGE)
     parser.add_argument("--output", type=Path, help="Write JSON atomically to this path.")
+    parser.add_argument(
+        "--timezone",
+        help="IANA timezone for date-only boundaries. Defaults to the host local timezone.",
+    )
     return parser
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_arg_parser().parse_args(argv)
     try:
-        start = parse_range_boundary(args.start)
-        end = parse_range_boundary(args.end, is_end=True)
+        timezone = resolve_timezone(args.timezone)
+        start = parse_range_boundary(args.start, timezone=timezone)
+        end = parse_range_boundary(args.end, is_end=True, timezone=timezone)
         if start >= end:
             raise ValueError("--start must be before --end")
         if args.max_pages < 1 or args.per_page < 1 or args.per_page > 100:
             raise ValueError("--max-pages must be positive and --per-page must be 1 through 100")
-    except ValueError as error:
+    except (ValueError, ZoneInfoNotFoundError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
 

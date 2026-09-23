@@ -1,20 +1,17 @@
 #!/usr/bin/env python3
-"""Collect read-only GitHub activity candidates with the GitHub CLI.
-
-The collector uses the authenticated user's event feed for timestamped events
-and GraphQL search for authored discussions. It writes one JSON document to
-stdout. Per-source failures are included in that document and do not hide
-partial successful collection.
-"""
+"""Collect read-only GitHub activity candidates with the GitHub CLI."""
 
 from __future__ import annotations
 
 import argparse
 import datetime as dt
 import json
+import os
 import subprocess
 import sys
-from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
+import tempfile
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import urlsplit, urlunsplit
 
 DEFAULT_OWNER = "github"
@@ -31,8 +28,7 @@ def parse_range_boundary(value: str, is_end: bool = False) -> dt.datetime:
         parsed_date = dt.date.fromisoformat(value)
         boundary = dt.datetime.combine(parsed_date, dt.time.min, tzinfo=dt.timezone.utc)
         return boundary + dt.timedelta(days=1) if is_end else boundary
-    normalized = value.replace("Z", "+00:00")
-    parsed = dt.datetime.fromisoformat(normalized)
+    parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
     if parsed.tzinfo is None:
         raise ValueError("timestamps must include a timezone")
     return parsed.astimezone(dt.timezone.utc)
@@ -49,20 +45,19 @@ def parse_github_timestamp(value: Optional[str]) -> Optional[dt.datetime]:
         return None
 
 
-def timestamp_in_range(
-    timestamp: Optional[str], start: dt.datetime, end: dt.datetime
-) -> bool:
+def timestamp_in_range(timestamp: Optional[str], start: dt.datetime, end: dt.datetime) -> bool:
     parsed = parse_github_timestamp(timestamp)
     return parsed is not None and start <= parsed < end
 
 
-def canonical_url(value: Optional[str]) -> Optional[str]:
-    """Remove fragments, query strings, and a non-root trailing slash."""
+def canonical_url(value: Optional[str], preserve_fragment: bool = False) -> Optional[str]:
+    """Strip queries and parent-item fragments while keeping event fragments."""
     if not value:
         return None
     parts = urlsplit(value)
     path = parts.path.rstrip("/") or "/"
-    return urlunsplit((parts.scheme, parts.netloc, path, "", ""))
+    fragment = parts.fragment if preserve_fragment else ""
+    return urlunsplit((parts.scheme, parts.netloc, path, "", fragment))
 
 
 def nested(value: JsonObject, *keys: str) -> Optional[Any]:
@@ -83,155 +78,183 @@ def text_is_substantive(value: object) -> bool:
     return len(text) >= SUBSTANTIVE_COMMENT_MINIMUM and len(text.split()) >= 3
 
 
-def event_candidate(
+def repository_name(event: JsonObject, fallback: str) -> str:
+    return str(nested(event, "repo", "name") or fallback)
+
+
+def item_context(source_type: str, source_id: str, url: Optional[str]) -> JsonObject:
+    return {"type": source_type, "id": source_id, "url": canonical_url(url)}
+
+
+def candidate(
     *,
-    event: JsonObject,
-    source_type: str,
-    timestamp: str,
+    event_id: str,
+    event_at: str,
+    event_type: str,
     title: str,
-    url: Optional[str],
-    roles: Iterable[str],
-    facts: Iterable[str],
-    event_id_suffix: Optional[str] = None,
+    summary_facts: List[str],
+    source_type: str,
+    source_id: str,
+    source_url: Optional[str],
+    role: str,
+    context_sources: Optional[List[JsonObject]] = None,
 ) -> JsonObject:
-    """Build the stable JSON shape shared by all normalized candidates."""
-    native_event_id = str(event.get("id", ""))
-    if event_id_suffix:
-        native_event_id = f"{native_event_id}:{event_id_suffix}"
-    stable_id = f"github-event:{native_event_id}"
-    clean_url = canonical_url(url)
+    """Build a candidate that conforms to references/schema.md."""
     return {
-        "id": stable_id,
-        "source_native_event_id": native_event_id,
-        "source_type": source_type,
-        "event_timestamp": timestamp,
+        "event_id": event_id,
+        "event_at": event_at,
+        "event_type": event_type,
         "title": title,
-        "url": clean_url,
-        "roles": sorted(set(roles)),
-        "evidence_facts": list(facts),
-        "source": {
-            "type": "github-event",
-            "id": str(event.get("id", "")),
-            "url": clean_url,
-        },
+        "summary_facts": summary_facts,
+        "focus_hints": [],
+        "source": {"type": source_type, "id": source_id, "url": source_url},
+        "context_sources": context_sources or [],
+        "role": role,
+        "confidence": "high",
     }
 
 
 def normalize_event(event: JsonObject, user: str, owner: str) -> List[JsonObject]:
-    """Convert one GitHub user-event payload into zero or more candidates."""
-    timestamp = event.get("created_at")
-    if not isinstance(timestamp, str) or not actor_is_user(event, user):
+    """Convert one GitHub user-event payload into schema candidates."""
+    event_at = event.get("created_at")
+    event_id = str(event.get("id") or "")
+    if not event_id or not isinstance(event_at, str) or not actor_is_user(event, user):
         return []
     event_type = event.get("type")
     payload = event.get("payload")
     if not isinstance(payload, dict):
         return []
+    repository = repository_name(event, owner)
 
     if event_type == "PullRequestEvent":
         pull_request = payload.get("pull_request") or {}
-        if str(nested(pull_request, "user", "login") or "").lower() != user.lower():
+        action = str(payload.get("action", "")).lower()
+        if (
+            str(nested(pull_request, "user", "login") or "").lower() != user.lower()
+            or action not in {"opened", "reopened", "closed", "synchronize"}
+        ):
             return []
-        action = str(payload.get("action", ""))
-        if action not in {"opened", "reopened", "closed", "synchronize"}:
-            return []
-        merged = bool(pull_request.get("merged")) and action == "closed"
+        merged = action == "closed" and bool(pull_request.get("merged"))
         label = "Merged" if merged else action.capitalize()
-        title = str(pull_request.get("title") or "Pull request")
-        number = pull_request.get("number") or nested(event, "repo", "name")
-        facts = [
-            f"PR {label.lower()} by {user}.",
-            f"Repository: {event.get('repo', {}).get('name', owner)}.",
-        ]
+        number = str(pull_request.get("number") or "")
+        pr_id = f"{repository}#{number}" if number else repository
+        pr_url = canonical_url(pull_request.get("html_url"))
         return [
-            event_candidate(
-                event=event,
-                source_type="github-pr",
-                timestamp=timestamp,
-                title=f"{label} PR: {title}",
-                url=pull_request.get("html_url"),
-                roles=["author"],
-                facts=facts,
+            candidate(
+                event_id=f"github-event:{event_id}",
+                event_at=event_at,
+                event_type="pull-request",
+                title=f"{label} PR: {pull_request.get('title') or 'Pull request'}",
+                summary_facts=[
+                    f"PR action: {label.lower()}.",
+                    f"Repository: {repository}.",
+                ],
+                source_type="github-event",
+                source_id=event_id,
+                source_url=pr_url,
+                role="author",
+                context_sources=[item_context("github-pr", pr_id, pr_url)],
             )
         ]
 
     if event_type == "PullRequestReviewEvent":
         review = payload.get("review") or {}
         pull_request = payload.get("pull_request") or {}
+        action = str(payload.get("action", "")).lower()
         state = str(review.get("state", "")).lower()
+        review_id = str(review.get("node_id") or review.get("id") or "")
+        review_body = review.get("body")
+        actionable_comment = state == "commented" and text_is_substantive(review_body)
         if (
-            str(payload.get("action", "")).lower() != "submitted"
-            or state != "submitted"
+            action != "submitted"
             or str(nested(review, "user", "login") or "").lower() != user.lower()
+            or not review_id
+            or (state not in {"approved", "changes_requested"} and not actionable_comment)
         ):
             return []
-        title = str(pull_request.get("title") or "Pull request")
+        number = str(pull_request.get("number") or "")
+        pr_id = f"{repository}#{number}" if number else repository
+        pr_url = canonical_url(pull_request.get("html_url"))
+        review_url = canonical_url(
+            review.get("html_url") or pull_request.get("html_url"), preserve_fragment=True
+        )
         return [
-            event_candidate(
-                event=event,
-                source_type="github-review",
-                timestamp=timestamp,
-                title=f"Submitted review: {title}",
-                url=review.get("html_url") or pull_request.get("html_url"),
-                roles=["reviewer"],
-                facts=[
-                    "Review state: submitted.",
-                    f"Repository: {event.get('repo', {}).get('name', owner)}.",
+            candidate(
+                event_id=f"github-review:{review_id}",
+                event_at=event_at,
+                event_type="review",
+                title=f"Submitted review: {pull_request.get('title') or 'Pull request'}",
+                summary_facts=[
+                    f"Review state: {state}.",
+                    f"Repository: {repository}.",
                 ],
+                source_type="github-review",
+                source_id=review_id,
+                source_url=review_url,
+                role="reviewer",
+                context_sources=[item_context("github-pr", pr_id, pr_url)],
             )
         ]
 
     if event_type == "IssuesEvent":
         issue = payload.get("issue") or {}
         action = str(payload.get("action", "")).lower()
-        issue_author = str(nested(issue, "user", "login") or "").lower()
-        assignees = {
-            str(item.get("login", "")).lower()
-            for item in issue.get("assignees", [])
-            if isinstance(item, dict)
-        }
-        if action == "opened" and issue_author == user.lower():
+        author = str(nested(issue, "user", "login") or "").lower()
+        if action == "opened" and author == user.lower():
             role, label = "author", "Opened"
-        elif action == "assigned" and user.lower() in assignees:
-            role, label = "assignee", "Assigned"
-        elif action == "closed" and issue_author == user.lower():
-            role, label = "author", "Closed"
+        elif action == "closed":
+            role, label = ("author", "Closed") if author == user.lower() else ("closer", "Closed")
         else:
             return []
+        number = str(issue.get("number") or "")
+        issue_id = f"{repository}#{number}" if number else repository
+        issue_url = canonical_url(issue.get("html_url"))
         return [
-            event_candidate(
-                event=event,
-                source_type="github-issue",
-                timestamp=timestamp,
+            candidate(
+                event_id=f"github-event:{event_id}",
+                event_at=event_at,
+                event_type="issue",
                 title=f"{label} issue: {issue.get('title') or 'Issue'}",
-                url=issue.get("html_url"),
-                roles=[role],
-                facts=[
-                    f"Issue action: {action}.",
-                    f"Repository: {event.get('repo', {}).get('name', owner)}.",
-                ],
+                summary_facts=[f"Issue action: {action}.", f"Repository: {repository}."],
+                source_type="github-event",
+                source_id=event_id,
+                source_url=issue_url,
+                role=role,
+                context_sources=[item_context("github-issue", issue_id, issue_url)],
             )
         ]
 
     if event_type == "IssueCommentEvent":
         comment = payload.get("comment") or {}
         issue = payload.get("issue") or {}
+        comment_id = str(comment.get("node_id") or comment.get("id") or "")
         if (
             str(nested(comment, "user", "login") or "").lower() != user.lower()
             or not text_is_substantive(comment.get("body"))
+            or not comment_id
         ):
             return []
+        number = str(issue.get("number") or "")
+        issue_id = f"{repository}#{number}" if number else repository
+        issue_url = canonical_url(issue.get("html_url"))
+        comment_url = canonical_url(
+            comment.get("html_url") or issue.get("html_url"), preserve_fragment=True
+        )
         return [
-            event_candidate(
-                event=event,
-                source_type="github-issue-comment",
-                timestamp=timestamp,
+            candidate(
+                event_id=f"github-issue-comment:{comment_id}",
+                event_at=event_at,
+                event_type="comment",
                 title=f"Commented on issue: {issue.get('title') or 'Issue'}",
-                url=comment.get("html_url") or issue.get("html_url"),
-                roles=["commenter"],
-                facts=[
+                summary_facts=[
                     f"Comment length: {len(' '.join(str(comment.get('body', '')).split()))} characters.",
-                    f"Repository: {event.get('repo', {}).get('name', owner)}.",
+                    f"Repository: {repository}.",
                 ],
+                source_type="github-issue-comment",
+                source_id=comment_id,
+                source_url=comment_url,
+                role="commenter",
+                context_sources=[item_context("github-issue", issue_id, issue_url)],
             )
         ]
 
@@ -243,22 +266,22 @@ def normalize_event(event: JsonObject, user: str, owner: str) -> List[JsonObject
             commit_author = nested(commit, "author", "username")
             if commit_author and str(commit_author).lower() != user.lower():
                 continue
-            repository = str(nested(event, "repo", "name") or owner)
             sha = str(commit["sha"])
             candidates.append(
-                event_candidate(
-                    event=event,
-                    source_type="github-commit",
-                    timestamp=timestamp,
+                candidate(
+                    event_id=f"github-commit:{repository}@{sha}",
+                    event_at=event_at,
+                    event_type="commit",
                     title=f"Committed: {str(commit.get('message') or sha).splitlines()[0]}",
-                    url=f"https://github.com/{repository}/commit/{sha}",
-                    roles=["author"],
-                    facts=[
+                    summary_facts=[
                         f"Commit SHA: {sha}.",
                         f"Repository: {repository}.",
                         f"Push reference: {payload.get('ref', '')}.",
                     ],
-                    event_id_suffix=sha,
+                    source_type="github-commit",
+                    source_id=sha,
+                    source_url=canonical_url(f"https://github.com/{repository}/commit/{sha}"),
+                    role="author",
                 )
             )
         return candidates
@@ -266,20 +289,35 @@ def normalize_event(event: JsonObject, user: str, owner: str) -> List[JsonObject
     if event_type == "DiscussionCommentEvent":
         comment = payload.get("comment") or {}
         discussion = payload.get("discussion") or {}
+        comment_id = str(comment.get("node_id") or comment.get("id") or "")
         if (
             str(nested(comment, "user", "login") or "").lower() != user.lower()
             or not text_is_substantive(comment.get("body"))
+            or not comment_id
         ):
             return []
+        discussion_id = str(discussion.get("node_id") or discussion.get("id") or "")
+        discussion_url = canonical_url(discussion.get("html_url"))
+        comment_url = canonical_url(
+            comment.get("html_url") or discussion.get("html_url"), preserve_fragment=True
+        )
+        context = (
+            [item_context("github-discussion", discussion_id, discussion_url)]
+            if discussion_id
+            else []
+        )
         return [
-            event_candidate(
-                event=event,
-                source_type="github-discussion-reply",
-                timestamp=timestamp,
+            candidate(
+                event_id=f"github-discussion-comment:{comment_id}",
+                event_at=event_at,
+                event_type="discussion-reply",
                 title=f"Replied to discussion: {discussion.get('title') or 'Discussion'}",
-                url=comment.get("html_url") or discussion.get("html_url"),
-                roles=["author", "replier"],
-                facts=["Discussion reply from authenticated user."],
+                summary_facts=["Discussion reply from authenticated user."],
+                source_type="github-discussion-comment",
+                source_id=comment_id,
+                source_url=comment_url,
+                role="replier",
+                context_sources=context,
             )
         ]
     return []
@@ -288,27 +326,26 @@ def normalize_event(event: JsonObject, user: str, owner: str) -> List[JsonObject
 def normalize_discussion(node: JsonObject, user: str) -> Optional[JsonObject]:
     """Normalize an authored GraphQL discussion search result."""
     author = nested(node, "author", "login")
-    timestamp = node.get("createdAt")
-    if str(author or "").lower() != user.lower() or not isinstance(timestamp, str):
-        return None
-    node_id = str(node.get("id", ""))
-    if not node_id:
+    event_at = node.get("createdAt")
+    node_id = str(node.get("id") or "")
+    if str(author or "").lower() != user.lower() or not isinstance(event_at, str) or not node_id:
         return None
     url = canonical_url(node.get("url"))
-    return {
-        "id": f"github-discussion:{node_id}",
-        "source_native_event_id": node_id,
-        "source_type": "github-discussion",
-        "event_timestamp": timestamp,
-        "title": f"Started discussion: {node.get('title') or 'Discussion'}",
-        "url": url,
-        "roles": ["author"],
-        "evidence_facts": [
+    repository = str(nested(node, "repository", "nameWithOwner") or "unknown")
+    return candidate(
+        event_id=f"github-discussion:{node_id}",
+        event_at=event_at,
+        event_type="discussion",
+        title=f"Started discussion: {node.get('title') or 'Discussion'}",
+        summary_facts=[
             "Discussion author matches authenticated user.",
-            f"Repository: {nested(node, 'repository', 'nameWithOwner') or 'unknown'}.",
+            f"Repository: {repository}.",
         ],
-        "source": {"type": "github-discussion", "id": node_id, "url": url},
-    }
+        source_type="github-discussion",
+        source_id=node_id,
+        source_url=url,
+        role="author",
+    )
 
 
 def default_run_command(command: Sequence[str]) -> Tuple[int, str, str]:
@@ -316,9 +353,7 @@ def default_run_command(command: Sequence[str]) -> Tuple[int, str, str]:
     return completed.returncode, completed.stdout, completed.stderr
 
 
-def gh_json(
-    arguments: Sequence[str], run_command: RunCommand = default_run_command
-) -> Any:
+def gh_json(arguments: Sequence[str], run_command: RunCommand = default_run_command) -> Any:
     command = ["gh", "api", *arguments]
     code, stdout, stderr = run_command(command)
     if code != 0:
@@ -341,10 +376,10 @@ def collect_user_events(
     """Fetch date-bounded user events with an explicit page cap."""
     candidates: List[JsonObject] = []
     scanned = 0
+    pages_scanned = 0
     for page in range(1, max_pages + 1):
-        payload = gh_json(
-            [f"/user/events?per_page={per_page}&page={page}"], run_command
-        )
+        payload = gh_json([f"/user/events?per_page={per_page}&page={page}"], run_command)
+        pages_scanned = page
         if not isinstance(payload, list):
             raise RuntimeError("GitHub user events response was not a JSON array")
         if not payload:
@@ -361,7 +396,7 @@ def collect_user_events(
             break
     return candidates, {
         "ok": True,
-        "pages_scanned": page,
+        "pages_scanned": pages_scanned,
         "events_scanned": scanned,
         "result_limit": max_pages * per_page,
     }
@@ -373,12 +408,7 @@ query($search_query: String!, $after: String) {
     pageInfo { hasNextPage endCursor }
     nodes {
       ... on Discussion {
-        id
-        title
-        url
-        createdAt
-        author { login }
-        repository { nameWithOwner }
+        id title url createdAt author { login } repository { nameWithOwner }
       }
     }
   }
@@ -395,7 +425,7 @@ def collect_discussions(
     run_command: RunCommand,
 ) -> Tuple[List[JsonObject], JsonObject]:
     """Find authored discussions through the GraphQL search API."""
-    query = (
+    search_query = (
         f"owner:{owner} author:{user} type:discussion "
         f"created:{start.date().isoformat()}..{(end - dt.timedelta(microseconds=1)).date().isoformat()}"
     )
@@ -408,7 +438,7 @@ def collect_discussions(
             "-f",
             f"query={DISCUSSION_QUERY}",
             "-f",
-            f"search_query={query}",
+            f"search_query={search_query}",
         ]
         if cursor:
             arguments.extend(["-f", f"after={cursor}"])
@@ -419,9 +449,9 @@ def collect_discussions(
         pages_scanned += 1
         for node in search.get("nodes", []):
             if isinstance(node, dict) and timestamp_in_range(node.get("createdAt"), start, end):
-                candidate = normalize_discussion(node, user)
-                if candidate:
-                    candidates.append(candidate)
+                normalized = normalize_discussion(node, user)
+                if normalized:
+                    candidates.append(normalized)
         page_info = search.get("pageInfo") or {}
         if not page_info.get("hasNextPage"):
             break
@@ -436,6 +466,22 @@ def collect_discussions(
     }
 
 
+def status_for(statuses: JsonObject, authenticated: bool) -> str:
+    if not authenticated:
+        return "unavailable"
+    successful_sources = [
+        status for name, status in statuses.items() if name != "authenticated_user" and status["ok"]
+    ]
+    failed_sources = [
+        status for name, status in statuses.items() if name != "authenticated_user" and not status["ok"]
+    ]
+    if failed_sources and successful_sources:
+        return "partial"
+    if failed_sources:
+        return "failed"
+    return "ok"
+
+
 def collect(
     start: dt.datetime,
     end: dt.datetime,
@@ -444,7 +490,7 @@ def collect(
     per_page: int = DEFAULT_PER_PAGE,
     run_command: RunCommand = default_run_command,
 ) -> JsonObject:
-    """Collect all supported sources and return a serializable result."""
+    """Collect supported sources and return the documented result shape."""
     statuses: JsonObject = {}
     errors: List[JsonObject] = []
     candidates: List[JsonObject] = []
@@ -460,7 +506,7 @@ def collect(
         user = ""
 
     if user:
-        for source, function in (
+        sources = (
             (
                 "user_events",
                 lambda: collect_user_events(
@@ -471,27 +517,48 @@ def collect(
                 "discussions",
                 lambda: collect_discussions(user, start, end, owner, max_pages, run_command),
             ),
-        ):
+        )
+        for source, function in sources:
             try:
-                source_candidates, status = function()
-                statuses[source] = status
+                source_candidates, source_status = function()
+                statuses[source] = source_status
                 candidates.extend(source_candidates)
             except RuntimeError as error:
                 statuses[source] = {"ok": False, "error": str(error)}
                 errors.append({"source": source, "error": str(error)})
 
-    deduplicated = {candidate["id"]: candidate for candidate in candidates}
+    deduplicated = {item["event_id"]: item for item in candidates}
     ordered = sorted(
-        deduplicated.values(), key=lambda candidate: (candidate["event_timestamp"], candidate["id"])
+        deduplicated.values(), key=lambda item: (item["event_at"], item["event_id"])
     )
     return {
-        "range": {"start": start.isoformat().replace("+00:00", "Z"), "end": end.isoformat().replace("+00:00", "Z")},
-        "authenticated_user": user or None,
-        "owner": owner,
+        "collector": "github",
+        "status": status_for(statuses, bool(user)),
+        "candidate_count": len(ordered),
         "candidates": ordered,
-        "collector_status": {"ok": not errors, "sources": statuses},
         "errors": errors,
+        "coverage": ["pull-requests", "reviews", "issues", "commits", "discussions"],
+        "source_status": statuses,
     }
+
+
+def write_json_output(path: Path, payload: JsonObject) -> None:
+    """Write JSON through a same-directory temporary file and atomic replace."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=str(path.parent))
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            json.dump(payload, stream, indent=2, sort_keys=True)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary_name, path)
+    except OSError:
+        try:
+            os.unlink(temporary_name)
+        except OSError:
+            pass
+        raise
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -503,6 +570,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--owner", default=DEFAULT_OWNER, help="GitHub owner for discussion search.")
     parser.add_argument("--max-pages", type=int, default=DEFAULT_MAX_PAGES)
     parser.add_argument("--per-page", type=int, default=DEFAULT_PER_PAGE)
+    parser.add_argument("--output", type=Path, help="Write JSON atomically to this path.")
     return parser
 
 
@@ -518,13 +586,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     except ValueError as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
-    print(
-        json.dumps(
-            collect(start, end, args.owner, args.max_pages, args.per_page),
-            indent=2,
-            sort_keys=True,
-        )
-    )
+
+    result = collect(start, end, args.owner, args.max_pages, args.per_page)
+    if args.output:
+        try:
+            write_json_output(args.output, result)
+        except OSError as error:
+            result["errors"].append({"source": "output", "error": str(error)})
+            result["status"] = "failed" if result["status"] == "unavailable" else "partial"
+            print(json.dumps(result, indent=2, sort_keys=True))
+            print(f"error: could not write {args.output}: {error}", file=sys.stderr)
+            return 1
+    else:
+        print(json.dumps(result, indent=2, sort_keys=True))
     return 0
 
 

@@ -321,6 +321,31 @@ class CollectionTests(unittest.TestCase):
         self.assertTrue(status["complete"])
         self.assertNotIn("warning", status)
 
+    def test_user_events_api_cap_overrides_empty_page_completion(self) -> None:
+        capped_page = [
+            event("PushEvent", {"commits": []}, str(index))
+            for index in range(100)
+        ]
+
+        def fake_run(command: list[str]) -> tuple[int, str, str]:
+            page = int(command[-1].rsplit("page=", 1)[1])
+            return 0, json.dumps(capped_page if page <= 3 else []), ""
+
+        _, status = github_activity.collect_user_events(
+            "octocat",
+            dt.datetime(2026, 9, 22, tzinfo=dt.timezone.utc),
+            dt.datetime(2026, 9, 24, tzinfo=dt.timezone.utc),
+            "github",
+            max_pages=4,
+            per_page=100,
+            run_command=fake_run,
+        )
+        self.assertEqual(status["events_scanned"], 300)
+        self.assertEqual(status["result_limit"], 300)
+        self.assertFalse(status["complete"])
+        self.assertIn("Result limit reached", status["warning"])
+        self.assertEqual(github_activity.status_for({"user_events": status}, True), "partial")
+
     def test_discussions_report_incomplete_when_more_pages_remain_at_limit(self) -> None:
         payload = {
             "data": {

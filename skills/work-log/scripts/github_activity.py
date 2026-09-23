@@ -395,6 +395,8 @@ def collect_user_events(
     scanned = 0
     pages_scanned = 0
     complete = False
+    oldest_seen: Optional[dt.datetime] = None
+    result_limit = min(max_pages * per_page, 300)
     encoded_user = quote(user, safe="")
     encoded_owner = quote(owner, safe="")
     for page in range(1, max_pages + 1):
@@ -409,7 +411,11 @@ def collect_user_events(
         if not isinstance(payload, list):
             raise RuntimeError("GitHub user events response was not a JSON array")
         if not payload:
-            complete = True
+            complete = not (
+                scanned >= result_limit
+                and result_limit == 300
+                and (oldest_seen is None or oldest_seen >= start)
+            )
             break
         scanned += len(payload)
         timestamps = []
@@ -419,6 +425,8 @@ def collect_user_events(
                 if timestamp_in_range(event.get("created_at"), start, end):
                     candidates.extend(normalize_event(event, user, owner))
         oldest = min((value for value in timestamps if value is not None), default=None)
+        if oldest is not None and (oldest_seen is None or oldest < oldest_seen):
+            oldest_seen = oldest
         if oldest is not None and oldest < start:
             complete = True
             break
@@ -430,7 +438,7 @@ def collect_user_events(
         "complete": complete,
         "pages_scanned": pages_scanned,
         "events_scanned": scanned,
-        "result_limit": max_pages * per_page,
+        "result_limit": result_limit,
     }
     if not complete:
         status["warning"] = (

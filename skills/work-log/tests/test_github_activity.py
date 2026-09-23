@@ -244,12 +244,14 @@ class CollectionTests(unittest.TestCase):
                 "20",
             )
         ]
+        commands: list[list[str]] = []
 
         def fake_run(command: list[str]) -> tuple[int, str, str]:
+            commands.append(command)
             joined = " ".join(command)
             if command[-1] == "/user":
                 return 0, json.dumps({"login": "octocat"}), ""
-            if "/user/events?" in joined:
+            if "/users/octocat/events/orgs/github?" in joined:
                 return 0, json.dumps(user_events if "page=1" in joined else []), ""
             if "graphql" in command:
                 return 1, "", "GraphQL unavailable"
@@ -271,6 +273,14 @@ class CollectionTests(unittest.TestCase):
         )
         self.assertEqual(result["errors"], [{"source": "discussions", "error": "GraphQL unavailable"}])
         assert_candidate_schema(self, result["candidates"][0])
+        self.assertIn(
+            [
+                "gh",
+                "api",
+                "/users/octocat/events/orgs/github?per_page=100&page=1",
+            ],
+            commands,
+        )
 
     def test_output_write_is_atomic_for_normal_use(self) -> None:
         payload = {"collector": "github", "status": "ok"}

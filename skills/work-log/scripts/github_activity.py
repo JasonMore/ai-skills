@@ -12,7 +12,7 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import quote, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 DEFAULT_OWNER = "github"
@@ -394,8 +394,16 @@ def collect_user_events(
     candidates: List[JsonObject] = []
     scanned = 0
     pages_scanned = 0
+    encoded_user = quote(user, safe="")
+    encoded_owner = quote(owner, safe="")
     for page in range(1, max_pages + 1):
-        payload = gh_json([f"/user/events?per_page={per_page}&page={page}"], run_command)
+        payload = gh_json(
+            [
+                f"/users/{encoded_user}/events/orgs/{encoded_owner}"
+                f"?per_page={per_page}&page={page}"
+            ],
+            run_command,
+        )
         pages_scanned = page
         if not isinstance(payload, list):
             raise RuntimeError("GitHub user events response was not a JSON array")

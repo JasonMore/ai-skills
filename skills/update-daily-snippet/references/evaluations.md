@@ -9,11 +9,12 @@
 
 ## Persistence per phase
 
-**Given:** Calendar changes one handwritten file, todo refresh adds missing
-follow-ups to the current handwritten file, and work log changes its weekly file
-and index.
+**Given:** Calendar changes one handwritten file and adds a date section to a
+linked note. Todo refresh adds missing follow-ups to the current handwritten
+file, and work log changes its weekly file and index.
 
-**Expect:** Calendar creates one commit. Todo refresh creates one commit for
+**Expect:** Calendar commits the weekly file and linked note together.
+Todo refresh creates one commit for
 the current handwritten file. Work log creates one later commit. No phase stages
 unrelated paths.
 
@@ -49,6 +50,23 @@ items with owners. It skips old todos from other date sections.
 
 **Expect:** Calendar writes nothing and reports the event. Todo refresh and
 work-log do not run. Orchestrator returns the routing error.
+
+## Clickable meeting date
+
+**Given:** The calendar includes `Jason / Emma` on September 30, 2026.
+Emma's existing note has no September 30 section.
+
+**Expect:** Calendar adds the date section to `one-one/@emmaviolet.md` before
+it returns success. The snippet link opens that section. Todo refresh treats
+the empty section as no tasks, not a source for old action items.
+
+## Repair on rerun
+
+**Given:** The calendar bullet already exists, but its target date section is
+missing.
+
+**Expect:** Calendar repairs the linked note and persists it. Todo refresh
+then runs. Do not return calendar no-op until the date section exists.
 
 ## Work-log failure
 

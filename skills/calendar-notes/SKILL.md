@@ -2,9 +2,10 @@
 name: calendar-notes
 description: >
   Captures calendar events in handwritten weekly snippets and links each event
-  to an existing vault note. Use when the user asks to update calendar notes,
-  add meetings to snippets, refresh a daily calendar, capture today's
-  meetings, or run calendar capture from update-daily-snippet.
+  to an existing vault note with a matching date section. Use when the user
+  asks to update calendar notes, add meetings to snippets, refresh a daily
+  calendar, capture today's meetings, or run calendar capture from
+  update-daily-snippet.
 ---
 
 # Calendar Notes
@@ -28,9 +29,13 @@ Weekly files use `snippets/YYYY MM mon DD - mon DD.md`.
    and events whose normalized subject is exactly `Focus time` or `Lunch`.
 5. Resolve every event before any edit. Follow
    [calendar note routing](references/calendar-note-routing.md).
-6. Merge missing events into each matching day.
-7. Invoke `persist-work-notes` once with the exact changed handwritten files
-   and a short action summary.
+6. Read every linked note and its Git diff. Include links already present in
+   the target date range, not only new calendar bullets.
+7. Ensure each linked note has the event's date section. Follow
+   [date sections](references/date-sections.md).
+8. Merge missing events into each matching day.
+9. Invoke `persist-work-notes` once with the exact changed handwritten files
+   and linked notes, plus a short action summary.
 
 If routing fails, write nothing. Return the event and candidate paths.
 
@@ -55,6 +60,8 @@ If routing fails, write nothing. Return the event and candidate paths.
 
 ## Persistence
 
+An unchanged calendar can still need new date sections in linked notes.
+Return no-op only when calendar bullets and all linked date sections exist.
 Pass only files changed by this run. Include prior edits already present in
 those files. Skip persistence on a no-op.
 

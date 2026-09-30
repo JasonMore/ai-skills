@@ -15,24 +15,18 @@ Jason has finished his meetings for the day and wants to update his one-on-one n
 The agent searches for transcript files matching today's date:
 
 ```bash
-find "Github/one-one" -name "2026-02-12*" -type f
+find "one-one" -name "2026-02-12*" -type f
 ```
 
 Output:
 ```
-Github/one-one/jfuchs/2026-02-12 11.35.54  Jason _ Jon.md
+one-one/jfuchs/2026-02-12 11.35.54  Jason _ Jon.md
 ```
 
-## Agent Response - Step 2: Ask User Which to Process
+## Agent Response - Step 2: Resolve the Target
 
-```
-I found 1 meeting transcript from today:
-
-1. **Jon Fuchs** - `2026-02-12 11.35.54  Jason _ Jon.md`
-   Target file: `Github/one-one/@jfuchs.md`
-
-Which transcripts would you like me to summarize and insert?
-```
+The request covers today's meetings. The people map resolves this transcript
+to `one-one/@jfuchs.md`. No extra selection question is needed.
 
 ## Agent Response - Step 3: Read and Summarize
 
@@ -40,7 +34,8 @@ The agent reads the full transcript, identifies key themes, decisions, and actio
 
 ## Agent Response - Step 4: Insert Summary
 
-The agent finds the `## 2026-02-12` heading in `@jfuchs.md` and inserts the summary after existing content:
+The agent reuses `## 2026-02-12` in `@jfuchs.md`, or creates that section if
+missing. It appends after any existing content, even when the section is empty:
 
 ```markdown
 ## 2026-02-12
@@ -48,6 +43,7 @@ The agent finds the `## 2026-02-12` heading in `@jfuchs.md` and inserts the summ
 
 milestone 7 dev ux issue https://github.com/github/core-ux/issues/1519
 
+<!-- meeting-summary: one-one/jfuchs/2026-02-12 11.35.54  Jason _ Jon.md -->
 ## TL;DR
 Jason and Jon discussed app shell data architecture in the UI service, focusing on separating blocking vs. non-blocking user data to improve server render performance. They aligned on the UI service's nested route architecture as the path to smarter data loading, with deferred counts as a fallback threat for slow feature team payloads. Jose has asked Jason to refocus on React SDLC, and Jon offered to help scope Milestone 7 of the UI service initiative as a potential overlap area.
 
@@ -71,23 +67,15 @@ Jason and Jon discussed app shell data architecture in the UI service, focusing 
 - Jon is out next week: schedule follow-up for today, tomorrow, or week after
 
 ## References
+- [[one-one/jfuchs/2026-02-12 11.35.54  Jason _ Jon|Transcript]]
 - **Milestone 7 Dev UX Issue**: https://github.com/github/core-ux/issues/1519
 - **UI Service Milestone 7**: Focused on DX, local development, preview deploys, fast CI, and AI integration
 - **IndexedDB Caching**: Issues team approach using local browser storage for repo tab counts and similar data
 - **Relay**: GraphQL client used by issues team (Jon considers not reusable for broader adoption)
 ```
 
-## Agent Response - Step 5: Confirm
+## Agent Response - Step 5: Persist
 
-```
-Done! I've added the meeting summary to Github/one-one/@jfuchs.md under the 2026-02-12 heading.
-
-The summary includes:
-- TL;DR (3 sentences)
-- 6 key discussion points
-- 3 action items
-- 4 follow-up items
-- 4 references
-
-Would you like me to adjust anything?
-```
+Invoke `persist-work-notes` with only `one-one/@jfuchs.md`.
+Return its date section, commit SHA, and push result. A repeat run finds the
+source marker and adds no duplicate summary.

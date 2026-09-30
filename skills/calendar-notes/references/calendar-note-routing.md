@@ -21,7 +21,8 @@ Resolve all event links before editing a snippet.
 - Keep the calendar subject as visible text.
 - Treat `/` in a subject as text, not a folder.
 - Confirm the target file exists.
-- Never create a meeting note as a routing side effect.
+- Never create a new note file as a routing side effect. Add missing date
+  sections inside resolved existing notes using [date sections](date-sections.md).
 - If zero or many candidates remain, ask the user to choose. Write nothing
   until every event has one target.
 
@@ -33,3 +34,8 @@ Resolve all event links before editing a snippet.
 | `Cody / Jason` | `[[one-one/@cbodfield#2026-08-05]]` |
 | `Jason / Francisco` | `[[one-one/@cuquo#2026-08-03]]` |
 | `Weekly Jason <> Katie` | `[[one-one/@inkblotty Katie McCormick#2026-08-03]]` |
+| `Jason / Emma` | `[[one-one/@emmaviolet#2026-09-30]]` |
+
+The Emma link requires a heading whose text is `2026-09-30` in
+`one-one/@emmaviolet.md`. A file that exists without this heading is not a
+complete calendar target.

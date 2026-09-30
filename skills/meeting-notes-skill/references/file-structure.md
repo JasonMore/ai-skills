@@ -2,8 +2,12 @@
 
 ## File Locations
 
-One-on-one note files: `Github/one-one/@<person>.md`
-Transcript files: `Github/one-one/<person>/<YYYY-MM-DD> <time> <participants>.md`
+Paths are relative to the vault root.
+
+One-on-one note files: `one-one/@<person>.md`
+Transcript files: `one-one/<person>/<YYYY-MM-DD> <time> <participants>.md`
+Group transcripts: `meetings/meeting transcripts/<YYYY-MM-DD> <time> <subject>.md`
+Group summary targets: the existing note linked from that date's calendar.
 
 ## Known People and Directories
 
@@ -27,6 +31,14 @@ Files use different heading levels for dates:
 - Some files use `##` (h2): `## 2026-02-12`
 
 Always match the existing convention in each file. Look at the most recent date heading to determine the pattern.
+
+Date headings may omit the space after `#` or `##`. Reuse empty date
+sections added by calendar capture. If no date section exists, create one
+even when there are no handwritten notes. Follow the shared
+[date section rules](../../calendar-notes/references/date-sections.md).
+
+A date section ends at the next date heading, not a `## TL;DR` or another
+topic heading.
 
 ## Transcript Format
 

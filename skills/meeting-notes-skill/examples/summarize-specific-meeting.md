@@ -15,28 +15,25 @@ Jason just finished a meeting with Blake and wants to immediately summarize it.
 The agent searches for today's transcript in the blakewilliams subdirectory:
 
 ```bash
-find "Github/one-one/blakewilliams" -name "2026-02-11*" -type f
+find "one-one/blakewilliams" -name "2026-02-11*" -type f
 ```
 
 Output:
 ```
-Github/one-one/blakewilliams/2026-02-11 10.10.30  Blake _ Jason.md
+one-one/blakewilliams/2026-02-11 10.10.30  Blake _ Jason.md
 ```
 
-## Agent Response - Step 2: Confirm
+## Agent Response - Step 2: Resolve
 
-```
-I found the transcript:
-
-- **Blake Williams** - `2026-02-11 10.10.30  Blake _ Jason.md`
-  Target file: `Github/one-one/@blakewilliams.md`
-
-Shall I summarize and insert it?
-```
+The named meeting maps to `one-one/@blakewilliams.md`. Read that note and its
+Git diff, then reuse or create the meeting-date section. Ask only if several
+transcripts match and the intended meeting remains unclear.
 
 ## Agent Response - Step 3: Process and Insert
 
-After user confirms, the agent reads the transcript, generates the summary, and inserts it under the matching date heading in `@blakewilliams.md`.
+The agent reads the full transcript, generates the summary, and appends it
+under the matching date heading in `@blakewilliams.md`. Handwritten notes
+are optional.
 
 The output format follows:
 
@@ -51,6 +48,7 @@ SDLC stuff is important
 
 use storming, norming, forming
 
+<!-- meeting-summary: one-one/blakewilliams/2026-02-11 10.10.30  Blake _ Jason.md -->
 ## TL;DR
 ...3 sentence summary...
 
@@ -64,7 +62,11 @@ use storming, norming, forming
 - Item to revisit later
 
 ## References
+- [[one-one/blakewilliams/2026-02-11 10.10.30  Blake _ Jason|Transcript]]
 - **Name**: Description or link
 ```
 
 Note how the existing handwritten notes (transcript link, raw notes) are preserved above the formatted summary sections.
+
+Persist only the changed note through `persist-work-notes`. On rerun, the
+source marker prevents another summary for this target and date.

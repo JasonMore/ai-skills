@@ -19,7 +19,8 @@ Run calendar capture, refresh daily todos, then run work logging.
 
 ## Process
 
-1. Invoke `calendar-notes` for the date range.
+1. Invoke `calendar-notes` for the date range. It must ensure date sections
+   exist in every linked note, including links already in the snippet.
 2. Wait for its result. Record changed files, commit SHA, no-op, or error.
 3. If calendar routing or persistence failed, stop and return its error.
 4. Refresh the daily todo section in the current handwritten weekly snippet.
@@ -41,8 +42,9 @@ Read:
 3. Meeting notes linked from calendar bullets in the date range
 
 For linked one-on-one or recurring meeting notes, read only the matching
-`#YYYY-MM-DD` section when it exists. Skip the note if the date section is
-missing. Do not pull old todos from other sections.
+date section. Accept `#` or `##` headings, with or without a space.
+An empty section has no todos. Report a missing section as a calendar
+capture error. Do not pull old todos from other sections.
 
 Collect:
 
@@ -83,8 +85,9 @@ missing, append it without moving other content.
 ## Persistence
 
 `calendar-notes` and `work-log` each invoke `persist-work-notes` with their
-exact changed files. The todo phase invokes `persist-work-notes` once with the
-current handwritten weekly snippet when it changed.
+exact changed files. Calendar targets include linked notes whose date sections
+were added. The todo phase invokes `persist-work-notes` once with the current
+handwritten weekly snippet when it changed.
 
 Skip todo persistence on a no-op.
 

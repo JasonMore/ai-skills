@@ -2,6 +2,8 @@
 
 Add transcript summaries to each meeting's dated section in its linked note.
 The section and summary are created even when you took no handwritten notes.
+Open meeting tasks also go into daily `## 🤖 Todos` sections in the
+handwritten weekly snippet.
 
 ## Install
 
@@ -15,6 +17,7 @@ Do not keep a separate copy in the user configuration directory.
 - "Update my one-on-one notes"
 - "Add a summary of my meeting with Emma"
 - "Add summaries from today's transcripts to the linked meeting notes"
+- "Dry run meeting notes and todos for this week"
 
 The skill processes the requested meetings with available sources and clear
 targets. It asks only when the scope or note target is unclear.
@@ -45,6 +48,14 @@ The next date's content stays unchanged. Repeat runs skip sources already
 summarized. Missing transcripts produce an explicit report, not a guessed
 summary.
 
-Changed note files are committed and pushed through `persist-work-notes`.
+Todo collection also runs for summaries that already exist. It preserves task
+text, skips completed tasks and other owners, and checks the whole weekly
+snippet for duplicates. The final `# todo` section stays unchanged.
+
+A dry run shows proposed tasks and source links without changing vault files
+or committing vault notes. Skill installation is separate from this preview.
+
+Changed note files and weekly snippets are committed and pushed together
+through `persist-work-notes`.
 See [evaluations](references/evaluations.md) for empty-section, date, and
-repeat-run cases.
+repeat-run cases, and [todo rules](references/todos.md) for task collection.

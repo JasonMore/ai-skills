@@ -74,6 +74,41 @@ class LinkedNoteContractTest(unittest.TestCase):
             with self.subTest(rule=rule):
                 self.assertIn(rule, text)
 
+    def test_meeting_todos_run_even_for_existing_summaries(self):
+        text = (SKILLS_DIR / "meeting-notes-skill/SKILL.md").read_text()
+        for rule in (
+            "Collect todos even when the summary was skipped",
+            "handwritten weekly snippets",
+            "tasks assigned only to other people",
+            "## 🤖 Todos",
+        ):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, text)
+
+    def test_meeting_todos_preserve_scope_and_existing_tasks(self):
+        text = (
+            SKILLS_DIR / "meeting-notes-skill/references/todos.md"
+        ).read_text()
+        for rule in (
+            "Ignore fenced code.",
+            "Copy each task's text exactly.",
+            "whole destination weekly snippet",
+            "existing open or completed copy",
+            "A shared URL alone",
+            "Leave the final `# todo` section unchanged.",
+            "Generated speaker labels",
+        ):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, text)
+
+    def test_meeting_dry_run_has_no_vault_side_effects(self):
+        text = (SKILLS_DIR / "meeting-notes-skill/SKILL.md").read_text()
+        self.assertIn("Do not write any vault file", text)
+        self.assertIn("Do not invoke `persist-work-notes` in a dry run.", text)
+        rules = (SKILLS_DIR / "meeting-notes-skill/references/todos.md").read_text()
+        self.assertIn("It changes no vault files", rules)
+        self.assertIn("source link", rules)
+
 
 if __name__ == "__main__":
     unittest.main()

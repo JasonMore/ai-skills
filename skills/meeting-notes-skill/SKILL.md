@@ -2,7 +2,8 @@
 name: meeting-notes
 description: >
   Finds meeting transcripts and adds summaries to dated sections in linked
-  vault notes, even when no handwritten notes exist. Use when the user asks
+  vault notes, then copies open tasks to daily snippet todo lists.
+  Supports a read-only dry run. Use when the user asks
   to "summarize my meeting", "update my one-on-one notes", "process today's
   meeting transcript", "format meeting notes", "add meeting summary",
   "update 1:1 notes", or "summarize transcript".
@@ -12,12 +13,14 @@ description: >
 
 Add sourced meeting summaries to dated sections in linked vault notes.
 Handwritten notes are optional. Preserve all existing content.
+After summaries, collect open tasks into daily `## 🤖 Todos` sections.
 
 ## Inputs
 
 - Date or range. Default to today in the user's local time.
 - Selected meetings or transcripts, when supplied.
 - Vault root. Default to the current Obsidian vault.
+- Dry run, when requested. Preview changes without writing to the vault.
 
 Use the meeting's local date, not the date when the skill runs.
 
@@ -80,15 +83,38 @@ Different meetings on one date may each have a sourced summary.
 If one source maps to several requested targets, check each target on its own.
 Do not leave the only summary in the transcript, snippet, or work log.
 
+## Collect meeting todos
+
+Follow the [meeting todo rules](references/todos.md).
+Read each requested meeting-date section, including handwritten tasks and
+existing summaries. Collect todos even when the summary was skipped as a
+duplicate. Copy missing tasks to `## 🤖 Todos` under the matching day in
+the handwritten weekly snippet. Use the meeting date, not the run date.
+
+Keep task text and existing list content unchanged. Skip completed tasks,
+tasks assigned only to other people, and duplicates across the weekly snippet.
+Do not turn general discussion or an unresolved question into a personal task.
+
+## Dry run
+
+When requested, plan summaries and todo additions in memory.
+Do not write any vault file, stage vault changes, or commit or push vault notes.
+Do not invoke `persist-work-notes` in a dry run.
+Show proposed todos by meeting date with source-note links. Report duplicates,
+completed tasks, other owners, and unclear follow-ups separately.
+Report missing sources or date sections rather than repairing them.
+
 ## Persistence and result
 
-Invoke `persist-work-notes` once with the exact changed note files and a short
-summary. Include existing user edits in those files. Do not stage unrelated
-notes or unchanged transcripts. Skip persistence on a no-op.
+Invoke `persist-work-notes` once outside a dry run with the exact changed note
+files and handwritten weekly snippets, plus a short summary.
+Include existing user edits in those files. Do not stage unrelated notes or
+unchanged transcripts. Skip persistence on a no-op.
 
 Return changed note paths and dates, skipped duplicate sources, missing-source
-or routing errors, commit SHA, and push result. Report partial success when
-some meetings could not be summarized.
+or routing errors, todo counts, commit SHA, and push result.
+In a dry run, return the preview instead of a commit SHA.
+Report partial success when some meetings could not be summarized.
 
 See [evaluations](references/evaluations.md) and
 [examples](examples/process-todays-meetings.md).

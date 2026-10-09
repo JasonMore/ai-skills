@@ -52,6 +52,32 @@ link unfurls.
 
 **Expect:** Create no candidates. Return the skipped reason counts.
 
+## Slackbot CLI summary
+
+**Given:** The user asks for a work log. A CLI prompt in the configured Slackbot
+DM receives a completed AI reply in the same thread.
+
+**Expect:** Read the reply matched to the prompt timestamp. Use its Markdown
+summary to find candidate sources. Read linked source threads before logging
+any outcome. Do not use the AI reply as event evidence.
+
+## Slackbot partial or stale answer
+
+**Given:** Slackbot reports limited search results, omits source links, or says
+a PR is unmerged despite a later verified merge event.
+
+**Expect:** Request missing links or coverage with at most one focused
+follow-up. Use direct searches and source reads for remaining gaps. Keep the
+verified event, reject the stale claim, and report unresolved coverage limits.
+
+## Slackbot send without a reply
+
+**Given:** The CLI post succeeds but no matching completed AI reply arrives
+within 120 seconds.
+
+**Expect:** Report the reply timeout, not a successful summary. Do not resend
+the same prompt. Continue with direct Slack searches and verified sources.
+
 ## Slack recognition
 
 **Given:** Another person mentions the user and states that the user unblocked a

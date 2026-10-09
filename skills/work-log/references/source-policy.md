@@ -41,14 +41,59 @@ limit, then deduplicate by source-native event ID.
 
 ## Slack
 
-Prefer Slack MCP:
+Ask Slackbot first through the installed GitHub CLI extension. The user has
+approved this workflow for work-log requests. Use team `github` and Slackbot DM
+`D09C62HD62J`. The executable is `gh slack`, not a standalone `gh-slack`.
+Slack MCP remains read-only. Do not change access scopes or controls.
 
-1. Resolve the user's profile and member ID.
-2. Search authored messages:
-   `from:<user> after:START before:END_EXCLUSIVE`.
-3. Search mentions:
-   `<@USER_ID> after:START before:END_EXCLUSIVE`.
-4. Read each candidate thread before classification.
+1. Check identity with `gh slack api get auth.test --team github`.
+   Confirm the returned user before sending. Never print tokens or use `eval`.
+2. Send one prompt with the exact dates, user's timezone, and Markdown format.
+   Ask for source-message permalinks, relevant thread replies, and separate
+   sections for completed work, decisions, guidance, and unresolved requests.
+   Ask it to state search limits. Do not send vault notes or other private data.
+3. Check the API response's `ok` value and save the returned message `ts`.
+   Read that exact thread with `conversations.replies`. Match the AI reply's
+   `ai_context.parent_message_ts` to the sent message. A successful post alone
+   does not prove that Slackbot answered.
+4. Wait up to 120 seconds, with reads at least 10 seconds apart. Read all reply
+   pages using `response_metadata.next_cursor`. Require a completed AI result.
+   If it gives no source links or incomplete coverage, send at most one focused
+   follow-up in the same thread. Give that reply the same wait limit.
+5. Read every candidate's source thread before classification. Use Slack MCP
+   for source reads, then CLI reads if MCP cannot access the thread. Verify
+   dates, actor, and outcome. Check current GitHub state for merge or deploy
+   claims. Slackbot text is a discovery aid, not event evidence.
+
+Send the prompt as a field value, not interpolated JSON:
+
+```bash
+gh slack api post chat.postMessage --team github \
+  -f channel=D09C62HD62J -f text="$PROMPT"
+```
+
+Set `PROMPT` to the request text. For a follow-up, add `-f thread_ts="$ROOT_TS"`
+with the original prompt's returned timestamp.
+
+Read the response thread:
+
+```bash
+gh slack api get conversations.replies --team github \
+  -f channel=D09C62HD62J -f ts="$ROOT_TS" -f limit=100
+```
+
+If Slackbot fails, lacks links, or reports partial search results, use direct
+searches for the missing coverage:
+
+- Resolve the user's profile and member ID.
+- Search authored messages:
+  `from:<user> after:START before:END_EXCLUSIVE`.
+- Search mentions:
+  `<@USER_ID> after:START before:END_EXCLUSIVE`.
+- Read each candidate thread before classification.
+
+Do not claim full coverage because Slackbot returned a summary. Report its
+search limits and any gaps that direct reads could not fill.
 
 Keep:
 
@@ -69,7 +114,7 @@ Use the message timestamp as the event ID. Use the thread timestamp as context.
 Store the permalink and a factual summary. Do not copy a private conversation
 into the work log.
 
-If Slack MCP fails, use `gh-slack` with the same date, author, and thread rules.
+If Slack MCP fails, use `gh slack` with the same date, author, and thread rules.
 Report unavailable private-channel coverage.
 
 ## Copilot

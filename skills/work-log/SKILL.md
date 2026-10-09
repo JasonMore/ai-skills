@@ -44,9 +44,10 @@ Run independent collectors in parallel when tools permit:
    tasks in the range.
 3. Run `scripts/github_activity.py` for meaningful PR, review, issue, commit,
    and discussion events.
-4. Use Slack MCP to find high-signal authored threads, replies, linked work,
-   decisions, action items, mentions, and recognition. Fall back to `gh-slack`
-   only when MCP is unavailable or fails.
+4. Ask Slackbot through `gh slack` for a Markdown summary with source links.
+   Follow the Slack steps in [source policy](references/source-policy.md).
+   Verify linked threads with Slack MCP or CLI reads before logging outcomes.
+   Use direct searches when Slackbot fails or gives incomplete results.
 5. Read calendar-linked meeting note sections for matching dates.
 6. Inspect meaningful changed documents. Exclude generated logs, application
    state, formatting-only changes, and unrelated vault churn.

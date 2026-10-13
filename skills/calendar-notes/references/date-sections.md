@@ -26,7 +26,9 @@ inside that date. The final date section ends at the end of the file.
 Create only the missing date heading and blank space for notes.
 Do not add a summary, action item, or placeholder claim.
 Check every calendar link in the requested date range, including old bullets.
-If an event has no note link by user choice, there is no target to update.
+If an event has no note link, there is no target to update. This includes
+events with missing or ambiguous targets. Do not require a note or date
+section for an unlinked event.
 
 Example calendar link:
 

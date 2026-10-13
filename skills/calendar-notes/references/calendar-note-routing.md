@@ -1,6 +1,7 @@
 # Calendar note routing
 
-Resolve all event links before editing a snippet.
+Note links are optional. Search for a clear existing target before adding a
+link. An event with no target still belongs in the calendar.
 
 ## Search order
 
@@ -23,8 +24,14 @@ Resolve all event links before editing a snippet.
 - Confirm the target file exists.
 - Never create a new note file as a routing side effect. Add missing date
   sections inside resolved existing notes using [date sections](date-sections.md).
-- If zero or many candidates remain, ask the user to choose. Write nothing
-  until every event has one target.
+- If zero or many candidates remain, add the event without a note link.
+  Report the event and any candidate paths after capture. Do not ask the user
+  to choose a target as a condition for capture, including on autopilot.
+- Do not guess between candidates, skip the event, or create a new note.
+- Preserve existing calendar bullets and their links. An ambiguous search
+  does not remove a valid existing link.
+- Only linked notes need matching date sections. Unlinked events do not block
+  the todo refresh or work log in `update-daily-snippet`.
 
 ## Examples
 
@@ -35,6 +42,7 @@ Resolve all event links before editing a snippet.
 | `Jason / Francisco` | `[[one-one/@cuquo#2026-08-03]]` |
 | `Weekly Jason <> Katie` | `[[one-one/@inkblotty Katie McCormick#2026-08-03]]` |
 | `Jason / Emma` | `[[one-one/@emmaviolet#2026-09-30]]` |
+| `Training session` with no matching note | No link |
 
 The Emma link requires a heading whose text is `2026-09-30` in
 `one-one/@emmaviolet.md`. A file that exists without this heading is not a

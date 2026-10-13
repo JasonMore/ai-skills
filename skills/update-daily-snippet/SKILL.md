@@ -22,13 +22,15 @@ Run calendar capture, refresh daily todos, then run work logging.
 1. Invoke `calendar-notes` for the date range. It must ensure date sections
    exist in every linked note, including links already in the snippet.
 2. Wait for its result. Record changed files, commit SHA, no-op, or error.
-3. If calendar routing or persistence failed, stop and return its error.
+3. If calendar fetch, linked-note update, or persistence failed, stop and
+   return its error. Missing or ambiguous note targets are not errors.
 4. Refresh the daily todo section in the current handwritten weekly snippet.
 5. Invoke `work-log` for the same date range and focus.
 6. Wait for its result.
 7. Return calendar, todo, and work-log results in order.
 
 Run `work-log` after calendar success or no-op. Calendar must finish first.
+Unlinked calendar events do not block todo refresh or work logging.
 Report partial success when work-log fails after calendar changed content.
 
 ## Daily todo refresh

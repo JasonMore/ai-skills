@@ -44,12 +44,20 @@ and those sections contain open action items.
 **Expect:** Todo refresh reads only those date sections and adds missing open
 items with owners. It skips old todos from other date sections.
 
-## Child failure
+## Unlinked calendar event
 
 **Given:** Calendar cannot route one event.
 
-**Expect:** Calendar writes nothing and reports the event. Todo refresh and
-work-log do not run. Orchestrator returns the routing error.
+**Expect:** Calendar adds the event without a link, reports it as unlinked,
+and persists its changes. Todo refresh and work-log run in order. On
+autopilot, no user input is required.
+
+## Child failure
+
+**Given:** Calendar fetch, linked-note update, or persistence fails.
+
+**Expect:** Return the actual error. Todo refresh and work-log do not run.
+Missing or ambiguous note targets alone do not count as a child failure.
 
 ## Clickable meeting date
 

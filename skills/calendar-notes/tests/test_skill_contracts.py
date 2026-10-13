@@ -54,6 +54,43 @@ class LinkedNoteContractTest(unittest.TestCase):
             with self.subTest(rule=rule):
                 self.assertIn(rule, text)
 
+    def test_calendar_allows_optional_note_targets(self):
+        skill_dir = SKILLS_DIR / "calendar-notes"
+        text = (skill_dir / "SKILL.md").read_text()
+        for rule in (
+            "Note links are optional.",
+            "Missing or ambiguous targets do not block capture.",
+            "Add those events without links",
+            "do not ask for note targets.",
+            "Unlinked events need no note or date section.",
+        ):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, text)
+
+        routing = (skill_dir / "references/calendar-note-routing.md").read_text()
+        for rule in (
+            "If zero or many candidates remain, add the event without a note link.",
+            "including on autopilot.",
+            "Do not guess between candidates, skip the event, or create a new note.",
+            "Preserve existing calendar bullets and their links.",
+        ):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, routing)
+
+        rules = (skill_dir / "references/date-sections.md").read_text()
+        self.assertIn("If an event has no note link, there is no target to update.", rules)
+        self.assertNotIn("If routing fails, write nothing.", text)
+        self.assertNotIn("until every event has one target", routing)
+
+    def test_daily_workflow_continues_with_unlinked_events(self):
+        text = (SKILLS_DIR / "update-daily-snippet/SKILL.md").read_text()
+        self.assertIn("Missing or ambiguous note targets are not errors.", text)
+        self.assertIn(
+            "Unlinked calendar events do not block todo refresh or work logging.",
+            text,
+        )
+        self.assertIn("If calendar fetch, linked-note update, or persistence failed", text)
+
     def test_daily_workflow_requires_linked_date_sections(self):
         text = (SKILLS_DIR / "update-daily-snippet/SKILL.md").read_text()
         self.assertIn("exist in every linked note", text)

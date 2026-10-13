@@ -1,8 +1,8 @@
 ---
 name: calendar-notes
 description: >
-  Captures calendar events in handwritten weekly snippets and links each event
-  to an existing vault note with a matching date section. Use when the user
+  Captures calendar events in handwritten weekly snippets with optional links
+  to existing vault notes with matching date sections. Use when the user
   asks to update calendar notes, add meetings to snippets, refresh a daily
   calendar, capture today's meetings, or run calendar capture from
   update-daily-snippet.
@@ -27,7 +27,7 @@ Weekly files use `snippets/YYYY MM mon DD - mon DD.md`.
 3. Invoke `workiq` and fetch calendar events for the full date range.
 4. Skip canceled events, all-day blocks, blank busy holds, declined events,
    and events whose normalized subject is exactly `Focus time` or `Lunch`.
-5. Resolve every event before any edit. Follow
+5. Link events only when a clear existing note target is available. Follow
    [calendar note routing](references/calendar-note-routing.md).
 6. Read every linked note and its Git diff. Include links already present in
    the target date range, not only new calendar bullets.
@@ -37,7 +37,10 @@ Weekly files use `snippets/YYYY MM mon DD - mon DD.md`.
 9. Invoke `persist-work-notes` once with the exact changed handwritten files
    and linked notes, plus a short action summary.
 
-If routing fails, write nothing. Return the event and candidate paths.
+Note links are optional. Missing or ambiguous targets do not block capture.
+Add those events without links and report them in the result. On autopilot,
+do not ask for note targets. Never guess a link or create a note to fill a gap.
+Still report calendar-fetch, linked-note, and persistence errors.
 
 ## Merge rules
 
@@ -47,6 +50,7 @@ If routing fails, write nothing. Return the event and candidate paths.
 
 ```markdown
 - 10:30 AM: Weekly Jason <> Katie (30 min) [[one-one/@inkblotty Katie McCormick#2026-08-17]]
+- 2:00 PM: Training session (60 min)
 ```
 
 - Keep existing calendar bullets in place.
@@ -62,6 +66,8 @@ If routing fails, write nothing. Return the event and candidate paths.
 
 An unchanged calendar can still need new date sections in linked notes.
 Return no-op only when calendar bullets and all linked date sections exist.
+Unlinked events need no note or date section. An unchanged unlinked event is
+not an error and does not require a new commit.
 Pass only files changed by this run. Include prior edits already present in
 those files. Skip persistence on a no-op.
 

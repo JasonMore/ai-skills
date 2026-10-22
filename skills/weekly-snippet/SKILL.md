@@ -100,9 +100,12 @@ Show the draft and source flags for user review. After approval, append:
 
 - Preserve any existing draft or daily content.
 - Use bold theme and feature headers.
-- Use bare PR URLs in Ships, one per line, with activity day in parentheses.
-- Do not add PR titles or status words after Ships URLs.
-- Use markdown links for inline PR, issue, Slack, and document references.
+- Put every PR link in an unordered list, in every section.
+- Use one bare PR URL per list item, with activity day in parentheses:
+  `- https://github.com/<owner>/<repo>/pull/<number> (Tue)`.
+- Do not put PR links in prose, tables, or comma-separated groups.
+- Do not add PR titles or status words after PR URLs.
+- Use markdown links for inline issue, Slack, and document references.
 - Use backticks around `@handles`.
 - Keep one ship per line. Use active, specific prose.
 - Use no em dash or en dash.

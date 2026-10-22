@@ -58,6 +58,14 @@ that says closed unmerged.
 **Expect:** Flag the old status as stale. Keep the activity date. Use current
 status only if the final prose needs a status.
 
+## PR link lists
+
+**Given:** The draft cites several PRs across Ships and other sections.
+
+**Expect:** Put every PR link in an unordered list. Each item contains one bare
+PR URL and the activity day in parentheses. Do not put PR links in prose,
+tables, or comma-separated groups. Keep the ownership filter for Ships.
+
 ## Final write
 
 **Given:** User approves the draft.

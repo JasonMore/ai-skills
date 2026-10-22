@@ -10,8 +10,9 @@ PR 103 is review-only work, so it appears outside Ships.
 
 **More reliable API types**
 
-- Reviewed [the type validation proposal](https://github.com/example/project/pull/103)
-  with the team.
+Reviewed the type validation proposal with the team.
+
+- https://github.com/example/project/pull/103 (Tue)
 
 ### 🚢 Key Ships & Accomplishments
 

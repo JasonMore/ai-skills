@@ -38,11 +38,22 @@ Required fields are `event_id`, `event_at`, `event_type`, `title`, one
 Use source-native event IDs. A parent item ID is not an event ID unless the
 item creation or state change is the event.
 
+Browser groups also include `first_visit_at`, `last_visit_at`, `visit_count`,
+and `event_sources`. Each item in `event_sources` has `type`, `id`, `url`,
+and `event_at`. These are individual visit events, not context links.
+The primary `source` is the earliest visit. `event_sources` holds the remaining
+visits. The primary source ID defines the group's `event_id`. Use
+`activity:browser-visit:<source.id>` as the lowercase Entry ID.
+Include the primary source and every unseen visit key in the Sources list.
+
 Confidence values:
 
 - `high`: the source directly proves the actor, time, and outcome
 - `medium`: two sources together prove the outcome
 - `low`: discovery hint only; do not write an entry
+
+For `browser-visit`, `high` proves a recorded navigation event only.
+Use role `visitor`. It does not prove attention, active time, or a review.
 
 ## Collector result
 
@@ -78,7 +89,7 @@ Use local ISO date and time when known. Use `[YYYY-MM-DD]` only when the source
 time is unknown.
 
 Entry types include `focus`, `ship`, `review`, `research`, `meeting`,
-`incident`, `tooling`, and `correction`.
+`incident`, `tooling`, `browser-visit`, and `correction`.
 
 Keep Entry IDs stable and lowercase. Normalize URLs by removing fragments that
 do not identify the event, tracking query strings, and trailing slashes.

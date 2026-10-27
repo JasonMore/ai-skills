@@ -143,3 +143,36 @@ had proof.
 **Given:** A prior entry says a PR merged. GitHub shows it closed unmerged.
 
 **Expect:** Append a correction with a new ID. Keep the prior entry unchanged.
+
+## Dia work-page visits
+
+**Given:** Dia records three PR visits, including a Files changed subpage.
+The selected profile also has unrelated personal browsing.
+
+**Expect:** Keep one `browser-visit` group for the PR with all three visit IDs.
+Exclude personal pages, titles, queries, fragments, and authentication routes.
+Record visit times and counts, not active minutes or a submitted review.
+
+## Dia history rerun
+
+**Given:** A browser group is already logged. A later run finds one new visit
+to the same page that day.
+
+**Expect:** Append only the new visit with its own Entry ID and source key.
+Keep the old entry unchanged. Another run with no new visits writes nothing.
+
+## Dia history access failure
+
+**Given:** A selected history database is missing, denied, locked during copy,
+or invalid. Another selected profile is readable.
+
+**Expect:** Report the failed profile and missing coverage. Keep the readable
+profile's verified visit events. Never switch profiles or bypass permissions.
+
+## Dia history time boundaries
+
+**Given:** The range crosses local midnight or a daylight-saving change.
+A page has visits inside and outside the range.
+
+**Expect:** Select individual in-range visits using the user's timezone.
+Group by local day. Do not use the URL's all-time count or last visit time.

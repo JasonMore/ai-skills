@@ -2,8 +2,9 @@
 name: work-log
 description: >
   Builds a sourced, append-only weekly work log from verified GitHub, Slack,
-  meeting, document, Copilot, and user-focus activity. Use when the user asks
-  to log work, capture daily activity, summarize sessions, record focused work,
+  meeting, document, Copilot, Dia browser history, and user-focus activity.
+  Use when the user asks to log work, capture daily activity, summarize sessions,
+  record focused work,
   update the work log, or run work capture from update-daily-snippet.
 ---
 
@@ -24,6 +25,8 @@ Read these files before collection:
 - User focus. Store it as a manual entry, then use it to rank candidates.
 - Vault root. Default to `/Users/jasonmore/code/work_notes`.
 - GitHub owner. Default to `github`.
+- Browser. Default to Dia's last-used profile and `github.com/github` pages.
+  Read another profile or work host only when the user selects it.
 
 ## Prepare
 
@@ -51,6 +54,9 @@ Run independent collectors in parallel when tools permit:
 5. Read calendar-linked meeting note sections for matching dates.
 6. Inspect meaningful changed documents. Exclude generated logs, application
    state, formatting-only changes, and unrelated vault churn.
+7. Run `scripts/browser_activity.py` for dated Dia work-page visits. Follow
+   the browser rules in [source policy](references/source-policy.md).
+   Keep visits separate from submitted reviews and completed work.
 
 Use [source policy](references/source-policy.md) for queries and filters.
 
@@ -61,13 +67,14 @@ Use [source policy](references/source-policy.md) for queries and filters.
 3. Reject focus, assignments, review requests, mentions, reactions, and raw
    item counts as proof by themselves.
 4. Reject acknowledgements, bot-only activity, brief lookups, empty
-   exploration, secrets, and claims with no durable outcome.
+   exploration, secrets, and claims with no durable outcome. Browser entries
+   are the exception: record page visits as `browser-visit`, not as outcomes.
 5. Correlate sources that prove the same outcome. Prefer one strong entry with
    several sources over repeated entries.
 6. Keep separate events for distinct commits, reviews, decisions, incidents,
    or deliverables on the same PR, issue, or thread.
 7. Rank by durable outcome, focus match, source strength, and collaboration
-   impact.
+   impact. Use browser visits to show work context, not accomplishment rank.
 
 ## Write
 
@@ -76,7 +83,8 @@ Use [source policy](references/source-policy.md) for queries and filters.
 3. Build stable dated entries from verified candidates.
 4. Canonicalize source URLs and IDs.
 5. Skip an activity when its stable entry ID or all unique event source keys
-   already exist.
+   already exist. For browser groups, first remove logged visit keys and
+   rebuild the group from unseen visits. See the browser source policy.
 6. Append new entries. Never edit, delete, reorder, or merge prior entries.
 7. Fix a prior claim with an appended correction entry.
 8. Add each new weekly file to the index. Refresh its row after later appends.
@@ -84,6 +92,8 @@ Use [source policy](references/source-policy.md) for queries and filters.
 
 Every activity claim needs at least one event source. A parent PR, issue, or
 thread URL can add context, but it does not prove a new event by itself.
+Visit times and counts prove recorded navigation only. Never report them as
+active time, review completion, approval, or a shipped result.
 
 ## Failures
 

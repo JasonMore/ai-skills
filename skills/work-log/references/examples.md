@@ -29,6 +29,24 @@ The commit and merge event prove the activity. The session adds context.
 
 A review request without a submitted review creates no entry.
 
+## Browser context, not a submitted review
+
+```markdown
+## [2026-10-27 09:10] browser-visit | Visit github/example#200
+- Entry ID: `activity:browser-visit:dia:root-hash:profile-4:101:visit-time`
+- Summary: Dia recorded 3 visits to this PR from 09:10 to 09:24 local time. These times show navigation, not active review time or a submitted review.
+- Focus: `browsing`
+- Sources:
+  - `browser-visit` | `dia:root-hash:profile-4:101:visit-time` | [github/example#200](https://github.com/github/example/pull/200)
+  - `browser-visit` | `dia:root-hash:profile-4:102:visit-time` | [github/example#200](https://github.com/github/example/pull/200)
+  - `browser-visit` | `dia:root-hash:profile-4:103:visit-time` | [github/example#200](https://github.com/github/example/pull/200)
+  - `github-pr` | `github/example#200` | [github/example#200](https://github.com/github/example/pull/200)
+```
+
+The IDs above are illustrative. Use the collector's actual IDs.
+Collapse Files changed and Conversation visits into the same PR group.
+Never turn a browser-only entry into a `review` entry.
+
 ## Slack decision with document
 
 ```markdown

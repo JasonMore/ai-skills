@@ -137,6 +137,64 @@ Skip:
 - repeated sessions that only restate the same source event
 - assistant claims that have no file, GitHub, Slack, meeting, or document proof
 
+## Browser history
+
+Read Dia's local history for the requested dates. The collector uses a temporary
+copy and leaves the live database unchanged. It needs no Raycast extension,
+browser extension, page fetch, or background tracker.
+
+Run:
+
+```bash
+python3 "$SKILL_DIR/scripts/browser_activity.py" \
+  --start YYYY-MM-DD \
+  --end YYYY-MM-DD \
+  --timezone America/Chicago
+```
+
+Date-only bounds are inclusive local dates. Timestamp bounds need a timezone;
+the end timestamp is exclusive. Use the user's timezone across daylight-saving
+changes. Read individual `visits`, not each URL's all-time visit count or last
+visit time.
+
+The default is Dia's `Local State` last-used profile. Use repeatable `--profile`
+only for profiles the user selects. Missing state, permission errors, busy
+snapshots, and invalid databases must produce explicit collector errors.
+Do not silently read other profiles or bypass access controls.
+
+The default work scope is `https://github.com/github/`. Use `--owner` for another
+GitHub owner. Add repeatable `--allow-host` only for exact work hosts the user
+selects. Do not collect personal sites or infer work from all GitHub browsing.
+Do not change browser or operating-system permissions.
+
+Strip query strings and fragments. Omit page titles, credentials, search terms,
+authentication pages, and account settings. Group PR subpages under the parent
+PR URL. Keep other allowed pages under their clean URL.
+
+Write one `browser-visit` group per canonical page per local day. Include the
+recorded visit count, first and last visit times, clean link, and individual
+visit source IDs. A single visit can show context. It does not prove review,
+research, implementation, or an outcome.
+
+Before writing, compare every group's visit keys with all indexed logs. Remove
+keys already logged. Rebuild the count, first and last times, primary source,
+and Entry ID from the remaining visits. Append only those new visits. Never
+update a prior group or repeat its totals. An unchanged rerun is a no-op.
+
+Keep PR visits separate from submitted GitHub reviews. Match the parent PR to
+connect the two, but claim a review only when another source proves it.
+Do not infer active time from visit gaps, `visit_duration`, repeated refreshes,
+or a tab left open. Do not rank PRs as "most time reviewed" from visit counts.
+
+Report profile scope, date range, host filters, and skipped reasons. State that
+private browsing, deleted or expired history, other profiles, and other devices
+are not covered. History can include redirects, reloads, or synced navigation;
+it proves recorded navigation, not who was looking at the page.
+
+The Raycast Dia extension reads the same local history store. Its source is
+[Dia history access](https://github.com/raycast/extensions/blob/da7885d3f412cec72d4f60634a799245f11ec6af/extensions/dia/src/dia.ts).
+It is a reference for the storage path, not a work-event source.
+
 ## Meetings
 
 Use calendar-linked notes. Read only the matching date section.

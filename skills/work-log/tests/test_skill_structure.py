@@ -32,6 +32,19 @@ class SkillStructureTest(unittest.TestCase):
                 self.assertNotIn("\N{EN DASH}", text)
                 self.assertNotIn("\N{EM DASH}", text)
 
+    def test_browser_collection_is_part_of_the_workflow(self):
+        skill = SKILL_FILE.read_text()
+        policy = (SKILL_DIR / "references" / "source-policy.md").read_text()
+        schema = (SKILL_DIR / "references" / "schema.md").read_text()
+        self.assertIn("scripts/browser_activity.py", skill)
+        self.assertIn("Dia's `Local State` last-used profile", policy)
+        self.assertIn("--allow-host", policy)
+        self.assertIn("Rebuild the count, first and last times", policy)
+        self.assertIn("event_sources", schema)
+        self.assertIn("not active minutes or a submitted review", (
+            SKILL_DIR / "references" / "evaluations.md"
+        ).read_text())
+
 
 if __name__ == "__main__":
     unittest.main()

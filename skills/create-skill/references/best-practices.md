@@ -421,7 +421,7 @@ Work with one instance of the agent ("Agent A") to create a skill that will be u
 Before sharing a skill, verify:
 
 ### Core Quality
-- [ ] **Run `clear-writing` skill on all prose** — short sentences, simple words, active voice
+- [ ] **Review all prose** — follow the user's writing requirements and keep the text clear
 - [ ] Description is specific and includes key terms
 - [ ] Description includes both what the skill does and when to use it
 - [ ] SKILL.md body is under 200 lines (ideally <500 for optimal performance)

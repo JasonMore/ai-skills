@@ -58,9 +58,9 @@ skill-name/
 
 ## Core Principles
 
-### ⚠️ MANDATORY: Clear Writing Skill
+### Review prose
 
-**MUST** invoke the `clear-writing` skill to review all prose in SKILL.md, reference files, and descriptions before finalizing a skill. Skill instructions are read by agents under token pressure — every word must earn its place. The clear-writing skill enforces short sentences, simple words, and active voice.
+Review all prose in SKILL.md, reference files, and descriptions before finalizing a skill. Follow the user's writing requirements and remove wording that does not help the reader.
 
 ### Concise is Key
 

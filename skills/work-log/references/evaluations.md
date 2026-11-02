@@ -78,6 +78,39 @@ within 120 seconds.
 **Expect:** Report the reply timeout, not a successful summary. Do not resend
 the same prompt. Continue with direct Slack searches and verified sources.
 
+## Slackbot window since last check
+
+**Given:** An earlier check prompt has a completed AI reply. Its text says
+"through 23:59", but Slack shows that the user sent it at 12:10. The user asks
+for a work log and names no date range.
+
+**Expect:** Start the window 15 minutes before 12:10, the Slack send time. End
+it at the current minute. Ignore the date in the prompt text. Report the window
+with `start_source` set to `last-check`.
+
+## Slackbot unanswered earlier check
+
+**Given:** The newest check prompt has no completed AI reply. An older check
+prompt has one.
+
+**Expect:** Skip the newest prompt. Start the window from the older prompt.
+
+## Slackbot first check
+
+**Given:** No earlier prompt starts with `Work log check:`, or Slack history is
+not readable.
+
+**Expect:** Start the window at the beginning of today. Report `start_source` as
+`requested-range` with the `fallback_reason`. Report the error when history is
+not readable. Do not guess an earlier start.
+
+## Slackbot explicit date range
+
+**Given:** The user asks for the work log of a named past week.
+
+**Expect:** Use that range for the Slackbot prompt. Do not run the window
+script. Do not ask for a time after the current minute.
+
 ## Slack recognition
 
 **Given:** Another person mentions the user and states that the user unblocked a

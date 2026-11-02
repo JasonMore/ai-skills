@@ -48,6 +48,7 @@ Run independent collectors in parallel when tools permit:
 3. Run `scripts/github_activity.py` for meaningful PR, review, issue, commit,
    and discussion events.
 4. Ask Slackbot through `gh slack` for a Markdown summary with source links.
+   Ask for the time since the last Slackbot check, not for whole days.
    Follow the Slack steps in [source policy](references/source-policy.md).
    Verify linked threads with Slack MCP or CLI reads before logging outcomes.
    Use direct searches when Slackbot fails or gives incomplete results.
@@ -117,6 +118,7 @@ Return:
 - new entry IDs
 - skipped duplicate keys and noise reasons
 - collector counts, failures, and missing coverage
+- Slackbot window, start source, and fallback reason
 - changed files
 - commit SHA
 - push result

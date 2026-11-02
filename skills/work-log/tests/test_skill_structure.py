@@ -45,6 +45,17 @@ class SkillStructureTest(unittest.TestCase):
             SKILL_DIR / "references" / "evaluations.md"
         ).read_text())
 
+    def test_slackbot_request_covers_the_time_since_the_last_check(self):
+        skill = SKILL_FILE.read_text()
+        policy = (SKILL_DIR / "references" / "source-policy.md").read_text()
+        script = (SKILL_DIR / "scripts" / "slackbot_window.py").read_text()
+        marker = re.search(r'^PROMPT_MARKER = "([^"]+)"$', script, re.MULTILINE)
+        self.assertIsNotNone(marker)
+        self.assertIn("scripts/slackbot_window.py", policy)
+        self.assertIn("since the last Slackbot check", skill)
+        self.assertIn("Slackbot window", skill)
+        self.assertRegex(policy, rf"(?m)^{re.escape(marker.group(1))} ")
+
 
 if __name__ == "__main__":
     unittest.main()

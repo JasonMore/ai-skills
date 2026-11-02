@@ -46,12 +46,37 @@ approved this workflow for work-log requests. Use team `github` and Slackbot DM
 `D09C62HD62J`. The executable is `gh slack`, not a standalone `gh-slack`.
 Slack MCP remains read-only. Do not change access scopes or controls.
 
+Ask Slackbot for the time since the last check. Do not ask for whole days. Get
+the window before you send the prompt:
+
+```bash
+python3 "$SKILL_DIR/scripts/slackbot_window.py" --timezone America/Chicago
+```
+
+The script finds the newest earlier check prompt that has a completed AI reply.
+It uses the Slack `ts` (send time) of that prompt. It never reads dates from the
+prompt text. The window ends at the current minute. It starts 15 minutes before
+that `ts`, to cover search lag. Deduplication removes the repeated items. Use
+`start_text` and `end_text` as given. Never write an end of day or a future time.
+
+Every check prompt must start with `Work log check:`. The script finds only
+prompts that start this way. An older prompt with no marker is not a check. When
+the script finds no check, `start_source` is `requested-range` and the window
+starts at the beginning of today.
+
+- If the user names a date range, use that range. Do not run the script. End the
+  range at the earlier of its end and the current minute.
+- If `status` is `unavailable`, report `errors` and use the fallback window.
+- Slack events inside the window are in range, even when they come before the
+  start of the requested date.
+- Report the window, `start_source`, and `fallback_reason` in the result.
+- A check moves the next start forward, even when the run stops before the log
+  is written. The reported window lets the user rerun it with an explicit range.
+
 1. Check identity with `gh slack api get auth.test --team github`.
    Confirm the returned user before sending. Never print tokens or use `eval`.
-2. Send one prompt with the exact dates, user's timezone, and Markdown format.
-   Ask for source-message permalinks, relevant thread replies, and separate
-   sections for completed work, decisions, guidance, and unresolved requests.
-   Ask it to state search limits. Do not send vault notes or other private data.
+2. Send one prompt from the template below. Use the window from the script and
+   the user's timezone. Do not send vault notes or other private data.
 3. Check the API response's `ok` value and save the returned message `ts`.
    Read that exact thread with `conversations.replies`. Match the AI reply's
    `ai_context.parent_message_ts` to the sent message. A successful post alone
@@ -72,8 +97,21 @@ gh slack api post chat.postMessage --team github \
   -f channel=D09C62HD62J -f text="$PROMPT"
 ```
 
-Set `PROMPT` to the request text. For a follow-up, add `-f thread_ts="$ROOT_TS"`
-with the original prompt's returned timestamp.
+Set `PROMPT` to this text. Replace `START_TEXT`, `END_TEXT`, and `TIMEZONE`:
+
+```text
+Work log check: Summarize my Slack activity from START_TEXT through END_TEXT
+(TIMEZONE). Include only messages sent inside this window. Return Markdown
+with these sections: Completed work, Decisions, Guidance I gave, and
+Unresolved requests to me. For each item, give the source message permalink,
+the permalinks of relevant thread replies, and the message date and time.
+Include messages I wrote and messages that mention me. State your search
+limits and say if the results can be incomplete. If there is no activity,
+say so.
+```
+
+For a follow-up, add `-f thread_ts="$ROOT_TS"` with the original prompt's
+returned timestamp.
 
 Read the response thread:
 
@@ -90,6 +128,7 @@ searches for the missing coverage:
   `from:<user> after:START before:END_EXCLUSIVE`.
 - Search mentions:
   `<@USER_ID> after:START before:END_EXCLUSIVE`.
+- Keep only messages sent inside the window.
 - Read each candidate thread before classification.
 
 Do not claim full coverage because Slackbot returned a summary. Report its

@@ -2,9 +2,7 @@
 
 Extract context from Slack conversations to inform agent tasks and decisions.
 
-## ⚠️ Security Warning
-
-**READ THIS BEFORE USING:**
+## Security
 
 This skill accesses Slack messages which may contain:
 - Personal information (PII)
@@ -13,15 +11,8 @@ This skill accesses Slack messages which may contain:
 - Credentials or secrets
 - Internal-only discussions
 
-**Before using this skill:**
-- ✅ Ensure you have permission to share the conversation
-- ✅ Review the thread for sensitive information
-- ✅ Redact any secrets, PII, or confidential data
-- ✅ Consider if the context is appropriate for AI processing
-- ❌ Never share customer data, passwords, or tokens
-- ❌ Don't use for private/sensitive conversations
-
-**Your responsibility:** You are accountable for what you share with AI agents. When in doubt, don't share.
+The skill uses fetched content without a separate review or confirmation step. It must omit
+credentials, tokens, customer data, and unrelated personal details from outputs.
 
 ## Prerequisites
 
@@ -65,12 +56,12 @@ gh slack read <slack-permalink>
 
 ### Personal Skills
 ```bash
-cp -r slack-context-skill ~/.copilot/skills/
+cp -r slack-context ~/.copilot/skills/
 ```
 
 ### Project Skills
 ```bash
-cp -r slack-context-skill /path/to/repo/.github/skills/
+cp -r slack-context /path/to/repo/.github/skills/
 ```
 
 ## Usage
@@ -83,27 +74,23 @@ This skill activates when you ask Copilot to:
 
 The skill will:
 1. Fetch the Slack thread using `gh slack read`
-2. Present the context for your review
-3. Ask for confirmation before proceeding
-4. Help you use the context for your task
+2. Remove sensitive or unrelated details from its output
+3. Use the context for your task without another confirmation
 
 ## Features
 
-- **Security-first** - Always prompts for confirmation before using Slack data
+- **No confirmation pause** - Uses fetched context right away
 - **Thread extraction** - Pulls full conversation threads, not just single messages
 - **Context formatting** - Structures Slack messages for agent consumption
-- **Redaction prompts** - Reminds you to remove sensitive info
+- **Safe output** - Omits secrets and unrelated sensitive details
 
 ## Examples
 
 ### Extract feature requirements
 ```bash
 # User: "Fetch the requirements from this Slack thread: https://github.slack.com/archives/C123/p456"
-# Agent: I'll fetch that thread. Remember: Review for sensitive info before I use it.
-#
-# [Shows thread content]
-#
-# I found a discussion about adding OAuth support. Ready to proceed? (y/n)
+# Agent: Fetched the thread and found a discussion about adding OAuth support.
+#        [Continues with the requested task.]
 ```
 
 ### Implementation guidance
@@ -114,14 +101,13 @@ The skill will:
 #        - Use token bucket algorithm
 #        - 100 requests per minute limit
 #        - Return 429 with Retry-After header
-#
-# Should I proceed with implementation? (y/n)
+#        [Continues with implementation.]
 ```
 
 ## Best Practices
 
-1. **Always review** the fetched content before confirming
-2. **Redact sensitive info** like names, emails, customer references
+1. **Omit sensitive info** like credentials, tokens, and customer data
+2. **Keep only needed context** for the task
 3. **Use public channels** when possible
 4. **Link to issues/PRs** instead when appropriate (they're safer)
 5. **Delete context** after task completion if it's sensitive

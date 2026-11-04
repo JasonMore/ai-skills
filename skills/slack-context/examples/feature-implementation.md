@@ -10,28 +10,7 @@ Your team discussed implementing OAuth authentication in Slack. You want to use 
 
 > "Fetch context from this Slack thread and help me implement it: https://github.slack.com/archives/C123ABC/p1234567890"
 
-## Agent Response - Step 1: Security Warning
-
-```
-⚠️  SECURITY WARNING
-
-You're about to fetch Slack messages that may contain:
-• Personal information (PII)
-• Confidential business information
-• Private conversations
-• Credentials or secrets
-
-Before proceeding:
-✓ Do you have permission to share this conversation?
-✓ Does it contain sensitive information?
-✓ Is it appropriate for AI processing?
-
-Continue? (y/n)
-```
-
-## User: "y"
-
-## Agent Response - Step 2: Fetch and Display
+## Agent Response - Step 1: Fetch and Summarize
 
 ```
 Fetching Slack thread...
@@ -63,21 +42,6 @@ Fetching Slack thread...
 > Perfect. And store tokens encrypted in the database
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-⚠️  Review the above for sensitive information:
-   • Names, emails, customer references
-   • Credentials, tokens, API keys
-   • Confidential product/business info
-
-Ready to proceed with this context? (y/n)
-```
-
-## User: "y"
-
-## Agent Response - Step 3: Summarize and Propose
-
-```
-✅ Context confirmed.
 
 📊 Discussion Summary:
 • Participants: alice, bob, charlie
@@ -127,8 +91,7 @@ Next: Should I create the token endpoint?
 
 ## Key Points
 
-- Security warnings shown twice (before fetch, before use)
-- Full content displayed for user review
-- User explicitly confirms at each step
+- Agent fetches and uses context without a confirmation pause
+- Agent omits secrets and unrelated sensitive details
 - Agent extracts technical requirements
 - Implementation follows the discussed approach

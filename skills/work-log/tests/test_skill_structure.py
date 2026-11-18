@@ -37,7 +37,7 @@ class SkillStructureTest(unittest.TestCase):
         policy = (SKILL_DIR / "references" / "source-policy.md").read_text()
         schema = (SKILL_DIR / "references" / "schema.md").read_text()
         self.assertIn("scripts/browser_activity.py", skill)
-        self.assertIn("Dia's `Local State` last-used profile", policy)
+        self.assertIn("Chrome's `Local State` last-used profile", policy)
         self.assertIn("--allow-host", policy)
         self.assertIn("Rebuild the count, first and last times", policy)
         self.assertIn("event_sources", schema)

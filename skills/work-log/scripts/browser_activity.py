@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect visit-only work evidence from selected Dia history profiles."""
+"""Collect visit-only work evidence from selected Google Chrome profiles."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ import tempfile
 from urllib.parse import quote, unquote, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-DEFAULT_USER_DATA_DIR = Path.home() / "Library/Application Support/Dia/User Data"
+DEFAULT_USER_DATA_DIR = Path.home() / "Library/Application Support/Google/Chrome"
 EPOCH = dt.datetime(1601, 1, 1, tzinfo=dt.timezone.utc)
 SNAPSHOT_ATTEMPTS = 3
 SENSITIVE = {
@@ -38,7 +38,7 @@ LIMITS = [
     "Profile history does not prove human attention or identify who used the profile.",
     "No duration is inferred from visits, visit durations, or gaps.",
     "Private browsing, deleted history, and history outside browser retention are unavailable.",
-    "Only selected Dia profiles and date-bounded stored visits are read.",
+    "Only selected Chrome profiles and date-bounded stored visits are read.",
     "One candidate per canonical page per local day across selected profiles.",
     "Snapshots retry at most three times; a changing or unreadable history is unavailable.",
 ]
@@ -203,7 +203,7 @@ def read_visits(history: Path, start: int, end: int) -> list[tuple[int, int, str
 
 def source_id(root: Path, profile: str, visit_id: int, visit_time: int) -> str:
     namespace = hashlib.sha256(os.fsencode(str(root.resolve()))).hexdigest()
-    return f"dia:{namespace}:{quote(profile, safe='')}:{visit_id}:{visit_time}"
+    return f"chrome:{namespace}:{quote(profile, safe='')}:{visit_id}:{visit_time}"
 
 
 def collect(
@@ -298,7 +298,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--start", required=True, help="Inclusive ISO date or aware timestamp.")
     parser.add_argument("--end", required=True, help="Inclusive ISO date or exclusive aware timestamp.")
     parser.add_argument("--timezone", help="IANA timezone; default: host local timezone.")
-    parser.add_argument("--user-data-dir", type=Path, default=DEFAULT_USER_DATA_DIR)
+    parser.add_argument("--user-data-dir", type=Path, default=DEFAULT_USER_DATA_DIR,
+                        help="Chrome user data directory. Default: %(default)s")
     parser.add_argument("--profile", action="append", help="Selected profile directory. Repeatable.")
     parser.add_argument("--owner", default="github")
     parser.add_argument("--allow-host", action="append", default=[], help="Additional exact work hostname.")

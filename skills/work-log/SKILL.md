@@ -2,7 +2,7 @@
 name: work-log
 description: >
   Builds a sourced, append-only weekly work log from verified GitHub, Slack,
-  meeting, document, Copilot, Dia browser history, and user-focus activity.
+  meeting, document, Copilot, Chrome browser history, and user-focus activity.
   Use when the user asks to log work, capture daily activity, summarize sessions,
   record focused work,
   update the work log, or run work capture from update-daily-snippet.
@@ -25,7 +25,7 @@ Read these files before collection:
 - User focus. Store it as a manual entry, then use it to rank candidates.
 - Vault root. Default to `/Users/jasonmore/code/work_notes`.
 - GitHub owner. Default to `github`.
-- Browser. Default to Dia's last-used profile and `github.com/github` pages.
+- Browser. Default to Chrome's last-used profile and `github.com/github` pages.
   Read another profile or work host only when the user selects it.
 
 ## Prepare
@@ -55,7 +55,7 @@ Run independent collectors in parallel when tools permit:
 5. Read calendar-linked meeting note sections for matching dates.
 6. Inspect meaningful changed documents. Exclude generated logs, application
    state, formatting-only changes, and unrelated vault churn.
-7. Run `scripts/browser_activity.py` for dated Dia work-page visits. Follow
+7. Run `scripts/browser_activity.py` for dated Chrome work-page visits. Follow
    the browser rules in [source policy](references/source-policy.md).
    Keep visits separate from submitted reviews and completed work.
 

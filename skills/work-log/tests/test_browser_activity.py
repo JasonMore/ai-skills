@@ -1,4 +1,4 @@
-"""Synthetic-only tests for Dia visit evidence. Never read real browser data."""
+"""Synthetic-only tests for browser visit evidence. Never read real browser data."""
 
 from __future__ import annotations
 
@@ -6,8 +6,11 @@ import datetime as dt
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import sqlite3
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -293,6 +296,36 @@ class BrowserActivityTests(unittest.TestCase):
                       ["--start", "2026-10-27T12:00:00"]):
             with patch("sys.stderr", new_callable=io.StringIO):
                 self.assertEqual(browser.main(args + extra), 2)
+
+    def test_cli_defaults_to_chrome_under_home(self):
+        home = self.root
+        chrome = home / "Library/Application Support/Google/Chrome"
+        chrome.mkdir(parents=True)
+        (home / "Local State").rename(chrome / "Local State")
+        dia = home / "Library/Application Support/Dia/User Data"
+        dia.mkdir(parents=True)
+        (dia / "Local State").write_text(json.dumps({"profile": {"last_used": "Work"}}))
+
+        self.root = dia
+        self.history(visits=[("2026-10-27T12:00:00Z", PR + "3")])
+        self.root = chrome
+        self.history(visits=[("2026-10-27T12:00:00Z", PR)])
+
+        def run():
+            return json.loads(subprocess.check_output(
+                [sys.executable, str(MODULE_PATH), "--start", "2026-10-27",
+                 "--end", "2026-10-27", "--timezone", "America/Chicago"],
+                env={**os.environ, "HOME": str(home)},
+            ))
+
+        result = run()
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual([item["source"]["url"] for item in result["candidates"]], [PR])
+        self.assertTrue(result["candidates"][0]["source"]["id"].startswith("chrome:"))
+        (chrome / "Local State").unlink()
+        result = run()
+        self.assertEqual(result["status"], "unavailable")
+        self.assertEqual(result["candidates"], [])
 
 
 if __name__ == "__main__":

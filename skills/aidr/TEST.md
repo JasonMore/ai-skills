@@ -2,7 +2,13 @@
 
 Run the skill on each source below. Compare the result with the meaning checks.
 The revisions are examples, not exact-match requirements. Do not use word count
-as a success measure. These are manual checks, not an automated model evaluation.
+as a success measure. The examples below support manual meaning checks; they do
+not prove that a model follows the skill.
+
+For paired model tests, use [evals/evals.json](evals/evals.json). It includes these
+two sources and a held-out technical-ambiguity case. Give each version the same
+prompt in a separate context. Grade meaning and clarity against the expectations;
+do not treat a structure check as a behavior test.
 
 ## Ruby comment: clearer references without invented details
 

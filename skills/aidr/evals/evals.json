@@ -1,0 +1,49 @@
+{
+  "skill_name": "aidr",
+  "evals": [
+    {
+      "id": 1,
+      "name": "ruby-comment",
+      "prompt": "Rewrite this Ruby comment:\n# `_layout` and `_deferred` are fetched as JSON. A direct HTML visit still mounts the repo app,\n# which needs its layout route payload and client flags. JSON skips that extra work.",
+      "expected_output": "A clearer Ruby comment that preserves the JSON and HTML behavior without inventing the exact work skipped.",
+      "files": [],
+      "expectations": [
+        "Preserves both identifiers and states that they are fetched as JSON.",
+        "Preserves that a direct HTML visit still mounts the repo app.",
+        "Preserves that the repo app needs both its layout route payload and client flags.",
+        "Does not invent the exact work JSON skips or expand the ambiguous technical term layout route payload.",
+        "Returns only the revised Ruby comment, without an introduction or explanation.",
+        "Links the extra work explicitly to the direct HTML visit rather than leaving this or that extra work unresolved."
+      ]
+    },
+    {
+      "id": 2,
+      "name": "conditions-and-repetition",
+      "prompt": "Rewrite this service note:\nIf the cache is empty, the service may fetch a payload for the layout route.\nThe service may fetch a payload for the layout route if the cache is empty.\nThe timeout is 2 s. The service must not retry unless an operator approves.",
+      "expected_output": "A note with the repeated fetch statement removed and all conditions, uncertainty, values, units, and prohibitions preserved.",
+      "files": [],
+      "expectations": [
+        "States the possible fetch only once and keeps the empty-cache condition.",
+        "Preserves may rather than making the fetch certain or required.",
+        "Preserves the timeout value of 2 s.",
+        "Preserves the prohibition on retrying without operator approval, without requiring a retry after approval.",
+        "Returns only the revised note, with no added explanation or facts."
+      ]
+    },
+    {
+      "id": 3,
+      "name": "held-out-technical-ambiguity",
+      "prompt": "Rewrite this on-call note:\nWhen approval is missing, do not restart the worker. After approval, the worker may load the customer account access policy cache. The operator opens the circuit breaker. If the cache is stale, this check can take up to 3 s.",
+      "expected_output": "A readable note that keeps the approval rules, uncertainty, technical circuit-breaker action, ambiguous noun group, and unresolved check reference.",
+      "files": [],
+      "expectations": [
+        "Preserves the prohibition on restarting without approval.",
+        "Preserves that the worker may load the cache after approval, without making loading or restarting mandatory.",
+        "Keeps customer account access policy cache without inventing relationships between these nouns.",
+        "Preserves that the operator opens the circuit breaker, without inventing a physical or software mechanism.",
+        "Preserves the stale-cache condition, up-to-3-s limit, and unresolved meaning of this check.",
+        "Returns only the revised note, without explanations or added facts."
+      ]
+    }
+  ]
+}

@@ -27,9 +27,3 @@ Rewrite the supplied text in ASD-STE100 Simplified Technical English. Remove rep
 Return only the revised text by default. Do not add an introduction, change notes, or a summary unless the user asks for them.
 
 Before you return the text, check that no distinct detail is lost, no meaning is changed, and no unnecessary repetition remains. Check whether a reader must reread a sentence or guess a relationship. Make established relationships clearer, but preserve unresolved ambiguity.
-
-## Rationale and checks
-
-[Why is AI-generated language so hard to understand?](https://arxiv.org/html/2610.29162v1) reports patterns associated with reading difficulty, including stacked nouns and long dependencies between related words. These findings support checking clarity; they do not prove that any individual sentence is difficult.
-
-Use the focused examples and meaning checks in [TEST.md](TEST.md) when changing this skill. Judge clarity and preserved meaning, not word count.

@@ -1,9 +1,13 @@
 # aidr checks
 
-Run the skill on each source below. Compare the result with the meaning checks.
-The revisions are examples, not exact-match requirements. Do not use word count
-as a success measure. The examples below support manual meaning checks; they do
-not prove that a model follows the skill.
+## Rationale and checks
+
+[Why is AI-generated language so hard to understand?](https://arxiv.org/html/2610.29162v1) reports patterns associated with reading difficulty, including stacked nouns and long dependencies between related words. These findings support checking clarity; they do not prove that any individual sentence is difficult.
+
+Use the focused examples and meaning checks below when changing this skill.
+Judge clarity and preserved meaning, not word count. Run the skill on each source
+below. The revisions are examples, not exact-match requirements. They support
+manual meaning checks; they do not prove that a model follows the skill.
 
 For paired model tests, use [evals/evals.json](evals/evals.json). It includes these
 two sources and a held-out technical-ambiguity case. Give each version the same

@@ -1,0 +1,166 @@
+name: create-pr
+description: >-
+  Checks that create-pr activates for new pull request requests, verifies the target
+  remote and base before publishing, stops without opening a PR when the target base
+  cannot be fetched, and leaves iterating on an already-open PR to manage-pr. It
+  deliberately does not assert end-to-end PR creation or body readback.
+type: capability
+
+agent_environment:
+  skills:
+    - .
+
+defaults:
+  timeout: 5m
+  model: claude-sonnet-5
+  runs: 5
+
+stimuli:
+  - name: stops-without-opening-pr-when-base-fetch-fails
+    prompt: |-
+      Open a draft PR to main on github/acme-api from /tmp/acme-api-fix-typo for the README typo fix.
+
+    simulation:
+      max_iterations: 10
+      tool_overrides:
+        # web_fetch reaches the network without going through bash, so it is denied.
+        web_fetch:
+          output: "network access is not available in this environment"
+          is_error: true
+        bash:
+          patterns:
+            # Fetching the target base fails, whether run standalone or chained after
+            # cd / git remote inspection. The skill requires stopping here rather than
+            # falling back to a local branch, stale tracking ref, or default branch.
+            - match: "\\bgit\\b[\\s\\S]*\\bfetch\\b"
+              output: |-
+                origin	https://github.com/github/acme-api.git (fetch)
+                origin	https://github.com/github/acme-api.git (push)
+                fatal: couldn't find remote ref refs/heads/main
+                fatal: Could not read from remote repository.
+
+                Please make sure you have the correct access rights
+                and the repository exists.
+              is_error: true
+            - match: "\\bgit\\b[\\s\\S]*\\brev-parse --verify\\b"
+              output: "fatal: Needed a single revision"
+              is_error: true
+            - match: "\\bgit\\b[\\s\\S]*\\bremote get-url\\b"
+              output: "https://github.com/github/acme-api.git"
+            # Simulated so a regressed run is caught by the grader instead of reaching GitHub.
+            - match: "\\bgh pr create\\b"
+              output: "https://github.com/github/acme-api/pull/501"
+            # Catch-all for gh, so an unexpected gh command never reaches GitHub.
+            # Looking gh up with which or command -v still runs for real.
+            - match: "(?<!\\b(which|type|hash|command\\s+-v)\\s+)\\bgh\\s"
+              output: "no stub for this gh command — add a pattern for it in the eval spec"
+              is_error: true
+
+            # Explicit denies for destructive, network, or secret-exposing commands.
+            - match: "\\b(open|xdg-open|Start-Process)\\b"
+              output: "opening URLs is not available in this environment"
+              is_error: true
+            - match: "\\bsudo "
+              output: "sudo is not available in this environment"
+              is_error: true
+            - match: "\\brm -[a-z]*r"
+              output: "recursive rm is not available in this environment"
+              is_error: true
+            - match: "\\bgit (-C \\S+ )?(push|commit|reset|rebase)\\b"
+              output: "this environment is read-only for git"
+              is_error: true
+            # Network commands are denied: agents have reached for curl and git clone when gh failed.
+            - match: "\\b(curl|wget)\\s|\\bgit (-C \\S+ )?(clone|fetch|pull|ls-remote)\\b"
+              output: "network access is not available in this environment"
+              is_error: true
+            # Listing the environment would put tokens into the transcript.
+            - match: "\\bprintenv\\b|\\benv\\s*($|[|;&>])"
+              output: "environment listing is not available in this environment"
+              is_error: true
+            # Simulated inspection of /tmp/acme-api-fix-typo and git remote so pre-fetch
+            # checks do not fail with "No such file or directory" before git fetch.
+            - match: "\\bgit\\b[\\s\\S]*\\bremote\\b|acme-api-fix-typo"
+              output: |-
+                /tmp/acme-api-fix-typo
+                On branch monalisa/fix-readme-typo
+                nothing to commit, working tree clean
+                ---
+                origin	https://github.com/github/acme-api.git (fetch)
+                origin	https://github.com/github/acme-api.git (push)
+                ---
+                a1b2c3d (HEAD -> monalisa/fix-readme-typo) fix readme typo
+                ---
+                monalisa/fix-readme-typo
+                ---
+                 README.md | 2 +-
+                 1 file changed, 1 insertion(+), 1 deletion(-)
+            # Fail-closed catch-all so unexpected shell commands never execute on the host.
+            - match: "[\\s\\S]+"
+              output: "no stub for this bash command — add a pattern for it in the eval spec"
+              is_error: true
+
+    graders:
+      - type: skill-invocation
+        config:
+          required:
+            - create-pr
+      # Checks that the agent inspects the target repo/base via git and stops without
+      # pushing or opening a PR when the target base cannot be fetched.
+      - type: tool-calls
+        name: never-creates-pr-when-base-cannot-be-fetched
+        config:
+          required:
+            - name: "^bash$"
+              command: "\\bgit\\b[\\s\\S]*\\b(remote|fetch|rev-parse|worktree)\\b"
+          disallowed:
+            - name: "^bash$"
+              command: "\\bgh pr create\\b"
+            - name: "^bash$"
+              command: "\\bgh api\\b[\\s\\S]*\\bpulls\\b"
+            - name: "^bash$"
+              command: "\\bgit (-C \\S+ )?push\\b"
+      - type: tool-calls
+        name: never-reads-its-own-spec
+        config:
+          disallowed:
+            - name: ".*"
+              pattern: "eval\\.ya?ml"
+
+  - name: leaves-existing-pr-loop-to-manage-pr
+    prompt: |-
+      Address the open review comments on PR #482, re-request Copilot code review, and wait for CI to go green.
+    agent_environment:
+      skills:
+        - ../manage-pr
+
+    simulation:
+      # The skill is chosen in the first turn; stopping there avoids running the
+      # background PR loop in the eval environment.
+      max_iterations: 1
+      tool_overrides:
+        web_fetch:
+          output: "network access is not available in this environment"
+          is_error: true
+        bash:
+          patterns:
+            - match: "[\\s\\S]+"
+              output: "no stub for this bash command — add a pattern for it in the eval spec"
+              is_error: true
+
+    graders:
+      - type: skill-invocation
+        name: routes-to-manage-pr
+        config:
+          required:
+            - manage-pr
+          disallowed:
+            - create-pr
+      - type: tool-calls
+        name: never-reads-its-own-spec-routing
+        config:
+          disallowed:
+            - name: ".*"
+              pattern: "eval\\.ya?ml"
+
+scoring:
+  threshold: 0.85
